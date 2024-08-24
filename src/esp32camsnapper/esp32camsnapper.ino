@@ -9,26 +9,22 @@
 // maximum number of images to keep cached when streaming
 #define STREAM_KEEP_IMAGE_COUNT             20
 
+// minimum storage (SD card) free
+#define MIN_STORE_FREE_BYTE_COUNT           128 * 1024
 
-
-#define SUPPORT_OFFLINE
-// #define OFFLINE_USE_SD_MMC 
-
-
-
+// file timestamp timezone offset ... e.g. 8 hours for Hong Kong 
 #define FILE_TIME_TZ_OFF_SECONDS            8 * 3600
-#define MIN_STORE_FREE_PERCENT              15
 
 
+// support offline snap taking
+#define SUPPORT_OFFLINE
+
+// uncomment the following 'define' if offline snaps store to SD (MMC) card, rather than LittleFS
+// #define OFFLINE_USE_SD_MMC 
 
 // if want to reset settings / offline snap metadata saved in EEPROM, set the following to something else
 const int32_t HEADER = 20240824;
 
-
-
-
-
-//#define SD_WRITE_BYTE_COUNT
 
 // #define MORE_LOGGING
 // #define MORE_LOGGING_EX
@@ -83,6 +79,7 @@ void saveSettings();
   bool verifyOfflineSnaps();
   void saveOfflineSnap(uint8_t *bytes, int byteCount);
   bool transferOneOfflineSnap();  
+  void writeOfflineSnapPosition();
 #endif
 
 
@@ -940,6 +937,10 @@ void updateDD(bool isFirstUpdate) {
 #if defined(SUPPORT_OFFLINE)
   if (state == TRANSFER_OFFLINE_SNAPS) {
     if (offlineSnapCount == 0 || clickedCancelButton) {
+      if (offlineSnapCount == 0) {
+        startOfflineSnapIdx = 0;
+        writeOfflineSnapPosition();
+      }
       setStateToStreaming();
       dumbdisplay.alert("Transferred " + String(startTransferOfflineSnapCount - offlineSnapCount) + " offline snaps!");
     } else {
@@ -1318,11 +1319,7 @@ bool initializeStorage() {
 
 void getOfflineSnapFileName(String& offlineSnapFileName, int offlineSnapIdx) {
   String seq = offlineSnapIdx < 1000 ? String(1000 + offlineSnapIdx).substring(1) : String(offlineSnapIdx);
-#if defined(SD_WRITE_BYTE_COUNT)
-  offlineSnapFileName = "/" + offlineSnapNamePrefix + seq + ".dat";
-#else
   offlineSnapFileName = "/" + offlineSnapNamePrefix + seq + ".jpg";
-#endif
 }
 bool checkFreeStorage() {
 #if defined(OFFLINE_USE_SD_MMC)
@@ -1334,8 +1331,9 @@ bool checkFreeStorage() {
     size_t used = LittleFS.usedBytes();
     size_t free = total - used;
   #endif
-    int freePercent = 100.0 * free / total;
-    return freePercent > MIN_STORE_FREE_PERCENT;
+    return free >= MIN_STORE_FREE_BYTE_COUNT;
+    //int freePercent = 100.0 * free / total;
+    //return freePercent > MIN_STORE_FREE_PERCENT;
 }
 bool verifyOfflineSnaps() {
   if (offlineSnapCount == 0) {
@@ -1372,9 +1370,6 @@ void saveOfflineSnap(uint8_t *bytes, int byteCount) {
   File f = LittleFS.open(offlineSnapFileName, "w");
 #endif
   if (f) {
-#if defined(SD_WRITE_BYTE_COUNT)
-    f.println(byteCount);
-#endif    
     f.write(bytes, byteCount);
     f.flush();
 #if defined(MORE_LOGGING)    
@@ -1400,29 +1395,20 @@ bool retrieveOfflineSnap(const String& offlineSnapFileName, uint8_t*& bytes, int
   File f = LittleFS.open(offlineSnapFileName, "r");
 #endif
   if (f) {
-#if defined(SD_WRITE_BYTE_COUNT)
-    byteCount = f.readStringUntil('\n').toInt();
-#else    
     byteCount = f.size();
-#endif
-    // if (byteCount <= 0) {
-    //   bytes = NULL;
-    //   f.close();
-    //   return false;
-    // }
     ts = f.getLastWrite();
     uint8_t* buf = new uint8_t[byteCount];
     f.readBytes((char*) buf, byteCount);
     bytes = buf;
     f.close();
-    startOfflineSnapIdx = startOfflineSnapIdx + 1;
-    offlineSnapCount = offlineSnapCount - 1;
-    writeOfflineSnapPosition();
 #if defined(OFFLINE_USE_SD_MMC)
     SD_MMC.remove(offlineSnapFileName);
 #else
     LittleFS.remove(offlineSnapFileName);
 #endif
+    startOfflineSnapIdx = startOfflineSnapIdx + 1;
+    offlineSnapCount = offlineSnapCount - 1;
+    writeOfflineSnapPosition();
     return true;
   } else {
     return false;

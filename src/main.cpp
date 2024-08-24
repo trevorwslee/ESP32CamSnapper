@@ -7,7 +7,6 @@
 //#include "_secret.h"
 #define BLUETOOTH "ESP32CamSnapper"
 
-
 #ifdef FOR_ESP32CAM
   #define OFFLINE_USE_SD_MMC 
 #endif
