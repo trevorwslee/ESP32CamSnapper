@@ -1,43 +1,52 @@
 #include "Arduino.h"
 
-// maximum number of images to save
-#define MAX_SNAP_COUNT                      299
 
-// maximum number of offline images that can be taken
-#define MAX_OFFLINE_SNAP_COUNT              599
+// * if want to use wifi, define the following WIFI_SSID and WIFI_PASSWORD
+// #define WIFI_SSID           "your-wifi-ssid"
+// #define WIFI_PASSWORD       "your-wifi-password"
 
-// maximum number of images to keep cached when streaming
-#define STREAM_KEEP_IMAGE_COUNT             20
+// * otherwise, define BLUETOOTH as Bluetooth device name below
+#define BLUETOOTH "ESP32CamSnapper"
 
-// minimum storage (SD card) free
-#define MIN_STORE_FREE_BYTE_COUNT           128 * 1024
-
-// file timestamp timezone offset ... e.g. 8 hours for Hong Kong 
-#define FILE_TIME_TZ_OFF_SECONDS            8 * 3600
+// * if not use wifi or bluetooth, will assume usb (otg) connectivity
 
 
-// support offline snap taking
+// * support offline snap taking
 #define SUPPORT_OFFLINE
 
-// uncomment the following 'define' if offline snaps store to SD (MMC) card, rather than LittleFS
+// * uncomment the following if offline snaps are to be stored to SD (MMC) card, rather than LittleFS
 // #define OFFLINE_USE_SD_MMC 
 
+
+// maximum number of snaps can be saved
+#define MAX_SNAP_COUNT                      299
+
+// maximum number of offline snaps can be taken
+#define MAX_OFFLINE_SNAP_COUNT              599
+
+// maximum number of images to keep cached when streaming snaps to DD app
+#define STREAM_KEEP_IMAGE_COUNT             20
+
+// minimum free storage (SD card) needed for offline snap taking
+#define MIN_STORE_FREE_BYTE_COUNT           128 * 1024
+
+
 // if want to reset settings / offline snap metadata saved in EEPROM, set the following to something else
-const int32_t HEADER = 20240824;
+const int32_t HEADER = 20240826;
 
 
 // #define MORE_LOGGING
 // #define MORE_LOGGING_EX
 
 
-#if defined(BLUETOOTH)
-  #include "esp32dumbdisplay.h"
-  DumbDisplay dumbdisplay(new DDBluetoothSerialIO(BLUETOOTH));
-  #define INIT_FRAME_SIZE_INDEX 1
-  #define INIT_FRAME_RATE_INDEX 1
-#elif defined(WIFI_SSID)
+#if defined(WIFI_SSID)
   #include "wifidumbdisplay.h"
   DumbDisplay dumbdisplay(new DDWiFiServerIO(WIFI_SSID, WIFI_PASSWORD), DD_DEF_SEND_BUFFER_SIZE, 2 * DD_DEF_IDLE_TIMEOUT);
+  #define INIT_FRAME_SIZE_INDEX 1
+  #define INIT_FRAME_RATE_INDEX 2
+#elif defined(BLUETOOTH)
+  #include "esp32dumbdisplay.h"
+  DumbDisplay dumbdisplay(new DDBluetoothSerialIO(BLUETOOTH));
   #define INIT_FRAME_SIZE_INDEX 1
   #define INIT_FRAME_RATE_INDEX 1
 #else
@@ -46,7 +55,7 @@ const int32_t HEADER = 20240824;
   #include "dumbdisplay.h"
   DumbDisplay dumbdisplay(new DDInputOutput());
   #define INIT_FRAME_SIZE_INDEX 0
-  #define INIT_FRAME_RATE_INDEX 1
+  #define INIT_FRAME_RATE_INDEX 2
 #endif
 
 
@@ -90,10 +99,10 @@ void deinitializeDD();
 void handleIdle(bool justBecameIdle);
 
 const int cameraFrameSizeCount = 6;
-framesize_t cameraFrameSizes[cameraFrameSizeCount] = {FRAMESIZE_QVGA, FRAMESIZE_VGA, FRAMESIZE_SVGA, FRAMESIZE_XGA, FRAMESIZE_HD, FRAMESIZE_SXGA};
+framesize_t cameraFrameSizes[cameraFrameSizeCount] = {FRAMESIZE_QVGA, FRAMESIZE_VGA, FRAMESIZE_SVGA, FRAMESIZE_HD, FRAMESIZE_SXGA, FRAMESIZE_UXGA};
 
-const int cachePMFrameRateCount = 5;
-int cachePMFrameRates[cachePMFrameRateCount] = {60 * 5, 60, 30, 2, 1};
+const int cachePMFrameRateCount = 4;
+int cachePMFrameRates[cachePMFrameRateCount] = {60 * 5, 60 * 2, 60, 30};
 
 const String snapDir = "snaps";
 const String offlineSnapNamePrefix = "off_";
@@ -143,7 +152,7 @@ String transferImageFileNamePrefixForOfflineSnaps;
 
 
 #if defined(MORE_LOGGING)
-// just for checking the date time stored in ESP32
+// just for checking the [local] date time stored in ESP32
 bool printLocalTime() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo, 0)) {
@@ -201,8 +210,6 @@ void loop() {
 #define IMAGE_LAYER_HEIGHT 480
 
 
-//String startDateTime;
-
 DDMasterResetPassiveConnectionHelper pdd(dumbdisplay, true);
 
 GraphicalDDLayer* imageLayer;
@@ -224,6 +231,8 @@ LedGridDDLayer* progressLayer;
 ImageRetrieverDDTunnel* imageRetrieverTunnel = NULL;
 BasicDDTunnel* generalTunnel = NULL;
 
+
+int tzMins = 0;
 
 bool cameraReady = false;
 long lastCaptureImageMs = 0;
@@ -265,6 +274,8 @@ void cameraFrameSizeToText(framesize_t frameSize, String& text) {
       text = "HD";
     } else if (frameSize == FRAMESIZE_SXGA) {
       text = "SXGA";
+    } else if (frameSize == FRAMESIZE_UXGA) {
+      text = "UXGA";
     } else {
       text = "???";
     }
@@ -316,14 +327,26 @@ bool setupCurrentStreamImageNameOfOffset(int offset) {
     return false;
   }
 }
+void formatDataTimeForFilename(String& filenameDateTime, const DDDateTime* pDateTime) {
+  if (pDateTime == NULL) {
+    filenameDateTime = "0000-00-00_000000";
+  } else {
+    filenameDateTime = String(pDateTime->year) + "-" + String(pDateTime->month) + "-" + String(pDateTime->day) + "_" + String(pDateTime->hour + 100).substring(1) + String(pDateTime->minute + 100).substring(1) + String(pDateTime->second + 100).substring(1);
+  }
+}
 void setupCurrentSnapFileName() {
   DDDateTime dateTime;
-  String startDateTime;
+  //String startDateTime;
+  const DDDateTime* pDateTime = NULL;
   if (Esp32GetDateTime(dateTime)) {
-    startDateTime = String(dateTime.year) + "-" + String(dateTime.month) + "-" + String(dateTime.day) + "-" + String(dateTime.hour) + "-" + String(dateTime.minute) + "-" + String(dateTime.second);
-  } else {
+    pDateTime = &dateTime;
+    //startDateTime = String(dateTime.year) + "-" + String(dateTime.month) + "-" + String(dateTime.day) + "-" + String(dateTime.hour) + "-" + String(dateTime.minute) + "-" + String(dateTime.second);
+  }/* else {
+    pDateTime = NULL;
     startDateTime = "0000-00-00-00-00-00";
-  }
+  }*/
+  String startDateTime;
+  formatDataTimeForFilename(startDateTime, pDateTime);
   String seq = savedSnapCount < 1000 ? String(1000 + savedSnapCount).substring(1) : String(savedSnapCount);
   currentSnapFileName = snapDir + "/" + startDateTime + "_" + seq + ".jpg";
   if (++savedSnapCount <= 999) {
@@ -336,12 +359,21 @@ void setupCurrentSnapFileName() {
 #if defined(SUPPORT_OFFLINE)
 void setTransferImageFileNamePrefixForOfflineSnap() {
   DDDateTime dateTime;
-  String startDateTime;
+  const DDDateTime* pDateTime = NULL;
   if (Esp32GetDateTime(dateTime)) {
-    startDateTime = String(dateTime.year) + "-" + String(dateTime.month) + "-" + String(dateTime.day) + "-" + String(dateTime.hour) + "-" + String(dateTime.minute) + "-" + String(dateTime.second);
-  } else {
-    startDateTime = "0000-00-00-00-00-00";
+    pDateTime = &dateTime;
   }
+  String startDateTime;
+  formatDataTimeForFilename(startDateTime, pDateTime);
+  // DDDateTime dateTime;
+  // String startDateTime;
+  // if (Esp32GetDateTime(dateTime)) {
+  //   //startDateTime = String(dateTime.year) + "-" + String(dateTime.month) + "-" + String(dateTime.day) + "-" + String(dateTime.hour) + "-" + String(dateTime.minute) + "-" + String(dateTime.second);
+  //   startDateTime = String(dateTime.year) + "-" + String(dateTime.month) + "-" + String(dateTime.day) + "_" +
+  //                   String(dateTime.hour + 100).substring(1) + String(dateTime.minute + 100).substring(1) + String(dateTime.second + 100).substring(1);
+  // } else {
+  //   startDateTime = "0000-00-00_000000";
+  // }
   transferImageFileNamePrefixForOfflineSnaps = snapDir + "/" + startDateTime + "_OFF";
 }
 void updateTransferProgress(bool initUpdate) {
@@ -408,6 +440,8 @@ void pinLayers(State forState) {
       .addLayer(progressLayer)
       .addLayer(cancelButtonLayer)
       .build(), true);
+  } else {
+    dumbdisplay.log("!!! unknown state for pin layers !!!", true);
   }
 }
 
@@ -417,7 +451,6 @@ void initializeDD() {
     cameraReady = false;
   }
 
-  // create a graphical layer for drawing the web image to
   imageLayer = dumbdisplay.createGraphicalLayer(IMAGE_LAYER_WIDTH, IMAGE_LAYER_HEIGHT);
   imageLayer->border(10, DD_COLOR_blue, "round");  
   imageLayer->padding(5);
@@ -425,7 +458,6 @@ void initializeDD() {
   imageLayer->setTextSize(18);
   imageLayer->enableFeedback();
 
-//  frameSlider = dumbdisplay.createJoystickLayer(10 * (STREAM_KEEP_IMAGE_COUNT - 1), "rl", 0.5, 10);
   frameSliderLayer = dumbdisplay.createJoystickLayer(1023, "rl", 0.5);
   frameSliderLayer->valueRange(1, STREAM_KEEP_IMAGE_COUNT);
   frameSliderLayer->padding(1);
@@ -453,11 +485,9 @@ void initializeDD() {
   frameSizeSelectionLayer = dumbdisplay.createSelectionLayer(4, 1, 1, cameraFrameSizeCount);
   frameSizeSelectionLayer->backgroundColor(DD_COLOR_beige);
   frameSizeSelectionLayer->highlightBorder(true, DD_COLOR_blue);
-  //frameSizeSelectionLayer->highlightBorder(false, "lightgrey");
   for (int i = 0; i < cameraFrameSizeCount; i++) {
     String fs;
     cameraFrameSizeToText(cameraFrameSizes[i], fs);
-    //frameSizeSelectionLayer->text(fs, 0, i % 2, i / 2);
     frameSizeSelectionLayer->text(fs, 0, i);
   }
 
@@ -474,7 +504,6 @@ void initializeDD() {
   savedCountLayer->showNumber(savedSnapCount, "0");
 
   frameRateSelectionLayer = dumbdisplay.createSelectionLayer(5, 1, cachePMFrameRateCount, 1);
-  //frameRateSelectionLayer->highlightBorder(false, "lightgrey");
   frameRateSelectionLayer->backgroundColor(DD_COLOR_beige);
   for (int i = 0; i < cachePMFrameRateCount; i++) {
     String fr;
@@ -501,7 +530,6 @@ void initializeDD() {
   brightnessSliderLayer->snappy();
   brightnessSliderLayer->showValue(true, "a80%ivory");
 
-
   qualityLabelLayer = dumbdisplay.createLcdLayer(2, 1);
   qualityLabelLayer->backgroundColor(DD_COLOR_azure);
   qualityLabelLayer->border(1, DD_COLOR_green, "hair");
@@ -514,7 +542,6 @@ void initializeDD() {
   qualitySliderLayer->border(1, DD_COLOR_khaki);
   qualitySliderLayer->snappy();
   qualitySliderLayer->showValue(true, "a80%ivory");
-
 
   autoSaveSelectionLayer = dumbdisplay.createSelectionLayer(8, 1);
   autoSaveSelectionLayer->backgroundColor(DD_COLOR_ivory);
@@ -532,17 +559,12 @@ void initializeDD() {
   progressLayer = dumbdisplay.createLedGridLayer(100, 1, 1, 4);
   progressLayer->border(0.5, DD_COLOR_navy);
   progressLayer->onColor(DD_COLOR_green);
-  //progressLayer->horizontalBar(30);
   
   // create a tunnel for retrieving JPEG image data from DumbDisplay app storage
   imageRetrieverTunnel = dumbdisplay.createImageRetrieverTunnel();
 
   generalTunnel = dumbdisplay.createGeneralServiceTunnel();
   generalTunnel->reconnectTo(DD_CONNECT_FOR_GET_DATE_TIME);  // ask DumbDisplay app for current time in "yyyy-MM-dd-hh-mm-ss" format
-  // if (startDateTime.isEmpty()) {
-  //     //generalTunnel = dumbdisplay.createGeneralServiceTunnel();
-  //     generalTunnel->reconnectTo(GENERAL_SERVICE_CONNECT_FOR_GET_DATE_TIME);  // ask DumbDisplay app for current time in "yyyy-MM-dd-hh-mm-ss" format
-  // }
 
   dumbdisplay.writeComment("initialized");
 
@@ -680,7 +702,8 @@ void updateDD(bool isFirstUpdate) {
         // got current time "feedback" from DumbDisplay app (initially requested)
         dumbdisplay.log("- got sync time " + response);
         DDDateTime dateTime;
-        DDParseGetDataTimeResponse(response, dateTime);
+        DDParseGetDataTimeResponse(response, dateTime, &tzMins);
+        dumbdisplay.log("  . tz_mins=" + String(tzMins));
         Esp32SetDateTime(dateTime);
 #if defined(SUPPORT_OFFLINE)
       if (state == STREAMING && offlineSnapCount > 0) {
@@ -690,7 +713,7 @@ void updateDD(bool isFirstUpdate) {
       } else {
 #if defined(SUPPORT_OFFLINE)        
         if (state == STREAMING && response == "Yes") {
-          setStateToTransferOfflineSnaps();
+          setStateToTransferOfflineSnaps();  // assume the response if from the "confirm" dialog [for transferring offline snaps]
         }
  #else
         dumbdisplay.log("unexpected service endpoint: [" + endPoint + "] with response [" + response + "]", true);
@@ -806,9 +829,6 @@ void updateDD(bool isFirstUpdate) {
         return;
       }
     }
-#ifdef CAPTURE_IMAGE_WHEN_CACHE
-    camera_fb_t* camera_fb = NULL;
-#else    
     camera_fb_t* camera_fb = esp_camera_fb_get();
     long fps_diffMs = -1;
     if (true) {
@@ -818,7 +838,6 @@ void updateDD(bool isFirstUpdate) {
         fps_diffMs = fps_lastMs - fps_lastLastMs;
       }
     }
-#endif
     boolean cacheImage = true;
     int cameraFramePerMinute = cachePMFrameRates[currentCachePMFrameRateIndex];
     if (cameraFramePerMinute > 0) {
@@ -835,14 +854,6 @@ void updateDD(bool isFirstUpdate) {
     bool justCapturedImage = false;
     if (cacheImage) {
       setupCurrentStreamImageName();
-#ifdef CAPTURE_IMAGE_WHEN_CACHE
-      imageLayer->flash();
-      camera_fb = esp_camera_fb_get();
-      if (true) {
-        esp_camera_fb_return(camera_fb);
-        camera_fb = esp_camera_fb_get();
-      }
-#endif
       if (camera_fb != NULL) {
 #if defined(MORE_LOGGING)
         bool timeTransfer = cachePMFrameRates[currentCachePMFrameRateIndex] <= 60;        
@@ -858,7 +869,6 @@ void updateDD(bool isFirstUpdate) {
         }
 #endif
         imageLayer->drawImageFileFit(currentStreamImageFileName);
-#ifndef CAPTURE_IMAGE_WHEN_CACHE
         if (fps_diffMs > 0) {
           int xOff = 20;
           int yOffset = IMAGE_LAYER_HEIGHT - 25;
@@ -866,7 +876,6 @@ void updateDD(bool isFirstUpdate) {
           String str = "capture: " + String(fps) + " FPS  ";
           imageLayer->drawStr(xOff, yOffset, str, DD_COLOR_darkred, DD_COLOR_yellow);
         }
- #endif
         if (true) {
           cache_lastLastMs = cache_lastMs;
           cache_lastMs = millis();
@@ -1040,6 +1049,24 @@ void handleIdle(bool justBecameIdle) {
   #define HREF_GPIO_NUM     25      // href_pin
   #define PCLK_GPIO_NUM     19      // pixel_clock_pin
   //#define VFLIP
+#elif defined(FOR_TCAMERAPLUS)
+  // for T-CAMERA PLUS
+  #define PWDN_GPIO_NUM     -1
+  #define RESET_GPIO_NUM    -1      // -1 = not used
+  #define XCLK_GPIO_NUM     4
+  #define SIOD_GPIO_NUM     18      // i2c sda
+  #define SIOC_GPIO_NUM     23      // i2c scl
+  #define Y9_GPIO_NUM       36
+  #define Y8_GPIO_NUM       37
+  #define Y7_GPIO_NUM       38
+  #define Y6_GPIO_NUM       39
+  #define Y5_GPIO_NUM       35
+  #define Y4_GPIO_NUM       26
+  #define Y3_GPIO_NUM       13
+  #define Y2_GPIO_NUM       34
+  #define VSYNC_GPIO_NUM    5       // vsync_pin
+  #define HREF_GPIO_NUM     27      // href_pin
+  #define PCLK_GPIO_NUM     25      // pixel_clock_pin
 #else
   #error board not supported  
 #endif
@@ -1135,33 +1162,10 @@ void deinitializeCamera() {
 }
 
 
+
 // **********
 // ***** for EEPROM *****
 // **********
-
-// class SettingChangeTracker {
-//   public:
-//     SettingChangeTracker() {
-//       int8_t oriCameraBrightness = cameraBrightness;
-//       bool oriCameraVFlip = cameraVFlip;
-//       bool oriCameraHMirror = cameraHMirror;
-//       int8_t oriCurrentCachePMFrameRateIndex = currentCachePMFrameRateIndex;
-//       int8_t oriCurrentFrameSizeIndex = currentFrameSizeIndex;
-//     }
-//     bool settingChanged() {
-//       return oriCameraBrightness != cameraBrightness ||
-//              oriCameraVFlip != cameraVFlip ||
-//              oriCameraHMirror != cameraHMirror ||
-//              oriCurrentCachePMFrameRateIndex != currentCachePMFrameRateIndex ||
-//              oriCurrentFrameSizeIndex != currentFrameSizeIndex;
-//     }
-//   private:    
-//     int8_t oriCameraBrightness;
-//     bool oriCameraVFlip;
-//     bool oriCameraHMirror;
-//     int8_t oriCurrentCachePMFrameRateIndex;
-//     int8_t oriCurrentFrameSizeIndex;
-// };
 
 void readOfflineSnapPosition() {
   startOfflineSnapIdx = EEPROM.readInt(24);
@@ -1222,6 +1226,7 @@ void saveSettings() {
   dumbdisplay.logToSerial("EEPROM: saved settings to EEPROM");
 #endif
 }
+
 
 
 #if defined(SUPPORT_OFFLINE)
@@ -1310,9 +1315,10 @@ bool initializeStorage() {
       offlineSnapCount = 0;
       writeOfflineSnapPosition();
     }
+    dumbdisplay.logToSerial("... offline snap storage ...");
+    dumbdisplay.logToSerial("    - startOfflineSnapIdx=" + String(startOfflineSnapIdx));
+    dumbdisplay.logToSerial("    - offlineSnapCount=" + String(offlineSnapCount));
     dumbdisplay.logToSerial("... offline snap storage initialized");
-    dumbdisplay.logToSerial("    * startOfflineSnapIdx=" + String(startOfflineSnapIdx));
-    dumbdisplay.logToSerial("    * offlineSnapCount=" + String(offlineSnapCount));
     offlineStorageInitialized = true;
     return true;
 }
@@ -1414,16 +1420,6 @@ bool retrieveOfflineSnap(const String& offlineSnapFileName, uint8_t*& bytes, int
     return false;
   }
 }
-// void composeImageFileNameForOfflineSnap(String& composedImageFileName, const String& offlineSnapFileName) {
-//   DDDateTime dateTime;
-//   String startDateTime;
-//   if (Esp32GetDateTime(dateTime)) {
-//     startDateTime = String(dateTime.year) + "-" + String(dateTime.month) + "-" + String(dateTime.day) + "-" + String(dateTime.hour) + "-" + String(dateTime.minute) + "-" + String(dateTime.second);
-//   } else {
-//     startDateTime = "0000-00-00-00-00-00";
-//   }
-//   composedImageFileName = snapDir + "/" + startDateTime + "_OFF" + offlineSnapFileName;
-// }
 bool transferOneOfflineSnap() {
   if (offlineSnapCount == 0) {
     return true;
@@ -1431,8 +1427,6 @@ bool transferOneOfflineSnap() {
   String offlineSnapFileName;
   getOfflineSnapFileName(offlineSnapFileName, startOfflineSnapIdx);
   String composedImageFileName = transferImageFileNamePrefixForOfflineSnaps + offlineSnapFileName;
-  //composeImageFileNameForOfflineSnap(composedImageFileName, offlineSnapFileName);
-  //dumbdisplay.logToSerial("* transferring offline snap [" + offlineSnapFileName + "] to [" + composedImageFileName + "]");
   uint8_t* bytes = NULL;
   int byteCount = 0;
   long ts;
@@ -1440,7 +1434,7 @@ bool transferOneOfflineSnap() {
     dumbdisplay.log("Failed to read offline snap [" + offlineSnapFileName + "] to transfer to [" + composedImageFileName + "]", true);
     return false;
   }
-  int64_t imageTimestamp = 1000 * (int64_t) (ts - FILE_TIME_TZ_OFF_SECONDS);  // imageTimestamp should be in ms
+  int64_t imageTimestamp = 1000 * (int64_t) (ts - 60 * tzMins);  // imageTimestamp should be in ms
 #if defined(MORE_LOGGING)
   dumbdisplay.logToSerial("* transfer " + String(byteCount / 1024.0) + "KB (ts=" + String(ts) + ";imageTS=" + String(imageTimestamp) + ") offline snap [" + offlineSnapFileName + "] to transfer to [" + composedImageFileName + "]");
 #endif
