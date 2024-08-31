@@ -38,7 +38,7 @@
 
 
 // if want to reset settings / offline snap metadata saved in EEPROM, set the following to something else
-const int32_t HEADER = 20240829;
+const int32_t HEADER = 20240830;
 
 
 // #define MORE_LOGGING
@@ -107,8 +107,8 @@ void handleIdle(bool justBecameIdle);
 const int cameraFrameSizeCount = 5;
 framesize_t cameraFrameSizes[cameraFrameSizeCount] = {FRAMESIZE_QVGA, FRAMESIZE_VGA, FRAMESIZE_SVGA, FRAMESIZE_HD, FRAMESIZE_SXGA};
 
-const int cachePMFrameRateCount = 4;
-int cachePMFrameRates[cachePMFrameRateCount] = {60 * 5, 60 * 2, 60, 30};
+const int cachePMFrameRateCount = 4; 
+int cachePMFrameRates[cachePMFrameRateCount] = {60 * 5, 60 * 2, 60, 1};
 
 const String snapDir = "snaps";
 const String offlineSnapNamePrefix = "off_";
@@ -118,8 +118,9 @@ int8_t cameraBrightness = 0;
 uint8_t cameraQuality = 15;
 bool cameraVFlip = false;
 bool cameraHMirror = false;
-int8_t currentCachePMFrameRateIndex = INIT_FRAME_RATE_INDEX;
 int8_t currentFrameSizeIndex = INIT_FRAME_SIZE_INDEX;
+int8_t currentCachePMFrameRateIndex = INIT_FRAME_RATE_INDEX;
+int16_t customCachePHFrameRate = 900;
 bool enableOffline = false;
 
 
@@ -132,6 +133,7 @@ class SettingChangeTracker {
       oriCurrentCachePMFrameRateIndex = currentCachePMFrameRateIndex;
       oriCurrentFrameSizeIndex = currentFrameSizeIndex;
       oriEnableOffline = enableOffline;
+      oriCustomCachePHFrameRate = customCachePHFrameRate;
     }
     bool settingChanged() {
       return oriCameraBrightness != cameraBrightness ||
@@ -139,7 +141,8 @@ class SettingChangeTracker {
              oriCameraHMirror != cameraHMirror ||
              oriCurrentCachePMFrameRateIndex != currentCachePMFrameRateIndex ||
              oriCurrentFrameSizeIndex != currentFrameSizeIndex ||
-             oriEnableOffline != enableOffline;
+             oriEnableOffline != enableOffline || 
+             oriCustomCachePHFrameRate != customCachePHFrameRate;
     }
   private:    
     int8_t oriCameraBrightness;
@@ -148,6 +151,7 @@ class SettingChangeTracker {
     int8_t oriCurrentCachePMFrameRateIndex;
     int8_t oriCurrentFrameSizeIndex;
     bool oriEnableOffline;
+    int16_t oriCustomCachePHFrameRate;
 };
 
 bool offlineStorageInitialized = false;
@@ -231,6 +235,7 @@ SevenSegmentRowDDLayer* savedCountLayer;
 LcdDDLayer* saveButtonLayer;
 LcdDDLayer* cancelButtonLayer;
 SelectionDDLayer* frameRateSelectionLayer;
+SelectionDDLayer* customFrameRateSelectionLayer;
 SelectionDDLayer* autoSaveSelectionLayer;
 SelectionDDLayer* enableOfflineSelectionLayer;
 LedGridDDLayer* progressLayer;
@@ -412,7 +417,10 @@ void pinLayers(State forState) {
       .endGroup()
       .beginGroup('H')
         .addLayer(frameRateSelectionLayer)
-        .addLayer(enableOfflineSelectionLayer)
+        .beginGroup('V')
+          .addLayer(enableOfflineSelectionLayer)
+          .addLayer(customFrameRateSelectionLayer)
+        .endGroup()
       .endGroup()
       .beginGroup('H')
         .beginGroup('V')
@@ -509,13 +517,23 @@ void initializeDD() {
   savedCountLayer->padding(10);
   savedCountLayer->showNumber(savedSnapCount, "0");
 
-  frameRateSelectionLayer = dumbdisplay.createSelectionLayer(5, 1, cachePMFrameRateCount, 1);
+  frameRateSelectionLayer = dumbdisplay.createSelectionLayer(5, 1, cachePMFrameRateCount / 2, 2);
   frameRateSelectionLayer->backgroundColor(DD_COLOR_beige);
   for (int i = 0; i < cachePMFrameRateCount; i++) {
     String fr;
     cachePMFrameRateToText(cachePMFrameRates[i], fr);
     frameRateSelectionLayer->text(fr, 0, i);
   }
+
+  customFrameRateSelectionLayer = dumbdisplay.createSelectionLayer(9, 1);
+  customFrameRateSelectionLayer->backgroundColor(DD_COLOR_lightgreen);
+
+  enableOfflineSelectionLayer = dumbdisplay.createSelectionLayer(9, 1);
+  enableOfflineSelectionLayer->backgroundColor(DD_COLOR_lightblue);
+  enableOfflineSelectionLayer->highlightBorder(true, DD_COLOR_red);
+  enableOfflineSelectionLayer->textCentered("Offline📴");
+  enableOfflineSelectionLayer->enableFeedback();  // reenable to not to auto flash
+
 
   cameraOptionSelectionLayer = dumbdisplay.createSelectionLayer(8, 1, 2);
   cameraOptionSelectionLayer->backgroundColor(DD_COLOR_azure);
@@ -555,12 +573,6 @@ void initializeDD() {
   autoSaveSelectionLayer->textCentered("Auto☑️");
   autoSaveSelectionLayer->unselectedTextCentered("Auto❎");
   autoSaveSelectionLayer->enableFeedback();  // reenable to not to auto flash
-
-  enableOfflineSelectionLayer = dumbdisplay.createSelectionLayer(2, 1);
-  enableOfflineSelectionLayer->backgroundColor(DD_COLOR_lightblue);
-  enableOfflineSelectionLayer->highlightBorder(true, DD_COLOR_red);
-  enableOfflineSelectionLayer->textCentered("📴");
-  enableOfflineSelectionLayer->enableFeedback();  // reenable to not to auto flash
 
   progressLayer = dumbdisplay.createLedGridLayer(100, 1, 1, 4);
   progressLayer->border(0.5, DD_COLOR_navy);
@@ -655,6 +667,10 @@ void updateQualityLabel() {
   qualityLabelLayer->blend(DD_COLOR_darkgray, alpha, "NOISE");
 }
 
+void updateCustomFrameRateSelectionLayer() {
+  String fr = String(customCachePHFrameRate) + " PH";
+  customFrameRateSelectionLayer->textCentered(fr);
+}
 void updateAutoSaveSelectionLayer() {
     if (autoSave) {
       autoSaveSelectionLayer->select();
@@ -662,7 +678,6 @@ void updateAutoSaveSelectionLayer() {
       autoSaveSelectionLayer->deselect();
     }
 }
-
 #if defined(SUPPORT_OFFLINE)
 void updateEnableOfflineSelectionLayer() {
     if (offlineStorageInitialized && enableOffline) {
@@ -675,27 +690,25 @@ void updateEnableOfflineSelectionLayer() {
 }
 #endif
 
+long getCurrentPHFrameRate() {
+    if (currentCachePMFrameRateIndex != -1) {
+      return 60 * cachePMFrameRates[currentCachePMFrameRateIndex];
+    } else {
+      return customCachePHFrameRate;
+    }
+}
+
 void updateDD(bool isFirstUpdate) {
   if (isFirstUpdate) {
-    //imageLayer->unloadAllImageFiles();
-    frameRateSelectionLayer->select(currentCachePMFrameRateIndex);
-    //streamImageNameIndex = 0;
-    //streamImageSlotLeft = STREAM_KEEP_IMAGE_COUNT;
+    if (currentCachePMFrameRateIndex != -1) {
+      frameRateSelectionLayer->select(currentCachePMFrameRateIndex);
+    } else {
+      customFrameRateSelectionLayer->select();
+    }
+    updateCustomFrameRateSelectionLayer();
     updateAutoSaveSelectionLayer();
-    // if (autoSave) {
-    //   autoSaveSelectionLayer->select();
-    // } else {
-    //   autoSaveSelectionLayer->deselect();
-    // }
 #if defined(SUPPORT_OFFLINE)
     updateEnableOfflineSelectionLayer();
-    // if (offlineStorageInitialized && enableOffline) {
-    //   enableOfflineSelectionLayer->select();
-    //   enableOfflineSelectionLayer->blend(DD_COLOR_red, 200);
-    // } else {
-    //   enableOfflineSelectionLayer->deselect();
-    //   enableOfflineSelectionLayer->noblend();
-    // }
 #endif
     setStateToStreaming();
   }
@@ -775,11 +788,6 @@ void updateDD(bool isFirstUpdate) {
   if (offlineStorageInitialized && enableOfflineSelectionLayer->getFeedback() != NULL) {
     enableOffline = !enableOffline;
     updateEnableOfflineSelectionLayer();
-    // if (enableOffline) {
-    //   enableOfflineSelectionLayer->select();
-    // } else {
-    //   enableOfflineSelectionLayer->deselect();
-    // }
   }  
   #endif
 
@@ -788,13 +796,41 @@ void updateDD(bool isFirstUpdate) {
   bool clickedCancelButton = cancelButtonLayer->getFeedback() != NULL;
 
   if (state == STREAMING) {
-    const DDFeedback* fb = frameRateSelectionLayer->getFeedback();
+    const DDFeedback* fb = frameSizeSelectionLayer->getFeedback();
     if (fb != NULL) {
-      int newFrameRateIndex = fb->x;
+      int newFrameSizeIndex = fb->y;
+      if (newFrameSizeIndex != currentFrameSizeIndex) {
+        currentFrameSizeIndex = newFrameSizeIndex;
+        cameraReady = false;
+        return;
+      }
+    }
+    fb = frameRateSelectionLayer->getFeedback();
+    if (fb != NULL) {
+      int newFrameRateIndex = 2 * fb->y + fb->x;
       if (newFrameRateIndex != currentCachePMFrameRateIndex) {
         frameRateSelectionLayer->select(newFrameRateIndex);
+        customFrameRateSelectionLayer->deselect();
         currentCachePMFrameRateIndex = newFrameRateIndex;
-        return;
+        //return;
+      }
+    }
+    fb = customFrameRateSelectionLayer->getFeedback();
+    if (fb != NULL) {
+      if (fb->type == CUSTOM) {
+        int phFrameRate = fb->text.toInt();
+        if (phFrameRate >= 1 && phFrameRate <= 3600) {
+          customCachePHFrameRate = phFrameRate;
+          currentCachePMFrameRateIndex = -1;
+          frameRateSelectionLayer->deselectAll();
+          customFrameRateSelectionLayer->select();
+          updateCustomFrameRateSelectionLayer();
+          //return;
+        } else {
+          dumbdisplay.log("invalid custom frame rate!", true);
+        }
+      } else {
+        customFrameRateSelectionLayer->explicitFeedback(0, 0, "'per-hour' frame rate; e.g. " + String(customCachePHFrameRate) , CUSTOM, "numkeys");
       }
     }
     fb = cameraOptionSelectionLayer->getFeedback();
@@ -826,15 +862,6 @@ void updateDD(bool isFirstUpdate) {
         resetCameraImageSettings();
       }
     }
-    fb = frameSizeSelectionLayer->getFeedback();
-    if (fb != NULL) {
-      int newFrameSizeIndex = fb->y;
-      if (newFrameSizeIndex != currentFrameSizeIndex) {
-        currentFrameSizeIndex = newFrameSizeIndex;
-        cameraReady = false;
-        return;
-      }
-    }
     camera_fb_t* camera_fb = esp_camera_fb_get();
     long fps_diffMs = -1;
     if (true) {
@@ -845,9 +872,9 @@ void updateDD(bool isFirstUpdate) {
       }
     }
     boolean cacheImage = true;
-    int cameraFramePerMinute = cachePMFrameRates[currentCachePMFrameRateIndex];
-    if (cameraFramePerMinute > 0) {
-      int captureImageGapMs = (60 * 1000) / cameraFramePerMinute;
+    int cameraFramePerHour = getCurrentPHFrameRate();
+    if (cameraFramePerHour > 0) {
+      long captureImageGapMs = (60 * 60 * 1000) / cameraFramePerHour;
       long diffMs = millis() - lastCaptureImageMs;
       if ((captureImageGapMs - diffMs) > (captureImageGapMs / 5.0)) {  // 30ms is some allowance 
         cacheImage = false;
@@ -862,12 +889,11 @@ void updateDD(bool isFirstUpdate) {
       setupCurrentStreamImageName();
       if (camera_fb != NULL) {
 #if defined(MORE_LOGGING)
-        bool timeTransfer = cachePMFrameRates[currentCachePMFrameRateIndex] <= 60;        
+        bool timeTransfer = getCurrentPHFrameRate() <= 3600;        
         if (timeTransfer) {
           dumbdisplay.writeComment("{{ST}}");
         }
 #endif    
-        // TODO: commented out the following line for debug    
         imageLayer->cacheImage(currentStreamImageFileName, camera_fb->buf, camera_fb->len);
 #if defined(MORE_LOGGING)        
         if (timeTransfer) {
@@ -992,9 +1018,9 @@ void handleIdle(bool justBecameIdle) {
     } else {
       if (cameraReady) {
         boolean saveImage = offlineSnapCount < MAX_OFFLINE_SNAP_COUNT;
-        int cameraFramePerMinute = cachePMFrameRates[currentCachePMFrameRateIndex];
-        if (cameraFramePerMinute > 0) {
-          int captureImageGapMs = (60 * 1000) / cameraFramePerMinute;
+        int cameraFramePerHour = getCurrentPHFrameRate();
+        if (cameraFramePerHour > 0) {
+          long captureImageGapMs = (60 * 60 * 1000) / cameraFramePerHour;
           long diffMs = millis() - lastCaptureImageMs;
           if ((captureImageGapMs - diffMs) > 0) { 
             saveImage = false;
@@ -1204,6 +1230,7 @@ void initRestoreSettings() {
   currentCachePMFrameRateIndex = EEPROM.readChar(7);
   currentFrameSizeIndex = EEPROM.readChar(8);
   enableOffline = EEPROM.readBool(9);
+  customCachePHFrameRate = EEPROM.readShort(10);
   if (cameraBrightness < -2 || cameraBrightness > 2) {
     cameraBrightness = 0;
   }
@@ -1212,6 +1239,9 @@ void initRestoreSettings() {
   }
   if (currentFrameSizeIndex < 0 || currentFrameSizeIndex > cameraFrameSizeCount) {
     currentFrameSizeIndex = INIT_FRAME_SIZE_INDEX;
+  }
+  if (customCachePHFrameRate < 0 || customCachePHFrameRate > 3600) {
+    customCachePHFrameRate = 900;
   }
   dumbdisplay.logToSerial("EEPROM: init restored settings from EEPROM");
 #if defined(SUPPORT_OFFLINE)
@@ -1227,6 +1257,7 @@ void saveSettings() {
   EEPROM.writeChar(7, currentCachePMFrameRateIndex);
   EEPROM.writeChar(8, currentFrameSizeIndex);
   EEPROM.writeBool(9, enableOffline);
+  EEPROM.writeShort(10, customCachePHFrameRate);
   EEPROM.commit();
 #if defined(MORE_LOGGING)  
   dumbdisplay.logToSerial("EEPROM: saved settings to EEPROM");

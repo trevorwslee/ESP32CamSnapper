@@ -10,7 +10,7 @@
   #define OFFLINE_USE_SD_MMC 
 #endif
 
-//#define MORE_LOGGING
+#define MORE_LOGGING
 
 
 #include "esp32camsnapper/esp32camsnapper.ino"
