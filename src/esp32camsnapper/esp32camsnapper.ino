@@ -1,5 +1,11 @@
 #include "Arduino.h"
 
+// * if using Bluetooth, may want to change
+//   C:\Users\you\.platformio\packages\framework-arduinoespressif32\libraries\BluetoothSerial\src\BluetoothSerial.cpp like
+//      //#define RX_QUEUE_SIZE 512
+//      //#define TX_QUEUE_SIZE 32
+//      #define RX_QUEUE_SIZE 2048
+//      #define TX_QUEUE_SIZE 512
 
 // * if want to use wifi, define the following WIFI_SSID and WIFI_PASSWORD
 // #define WIFI_SSID           "your-wifi-ssid"
@@ -32,7 +38,7 @@
 
 
 // if want to reset settings / offline snap metadata saved in EEPROM, set the following to something else
-const int32_t HEADER = 20240826;
+const int32_t HEADER = 20240829;
 
 
 // #define MORE_LOGGING
@@ -98,8 +104,8 @@ void updateDD(bool isFirstUpdate);
 void deinitializeDD();
 void handleIdle(bool justBecameIdle);
 
-const int cameraFrameSizeCount = 6;
-framesize_t cameraFrameSizes[cameraFrameSizeCount] = {FRAMESIZE_QVGA, FRAMESIZE_VGA, FRAMESIZE_SVGA, FRAMESIZE_HD, FRAMESIZE_SXGA, FRAMESIZE_UXGA};
+const int cameraFrameSizeCount = 5;
+framesize_t cameraFrameSizes[cameraFrameSizeCount] = {FRAMESIZE_QVGA, FRAMESIZE_VGA, FRAMESIZE_SVGA, FRAMESIZE_HD, FRAMESIZE_SXGA};
 
 const int cachePMFrameRateCount = 4;
 int cachePMFrameRates[cachePMFrameRateCount] = {60 * 5, 60 * 2, 60, 30};
