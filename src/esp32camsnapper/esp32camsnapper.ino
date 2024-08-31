@@ -20,8 +20,8 @@
 // * support offline snap taking
 #define SUPPORT_OFFLINE
 
-// * uncomment the following if offline snaps are to be stored to SD (MMC) card, rather than LittleFS
-// #define OFFLINE_USE_SD_MMC 
+// * uncomment the following if offline snaps are to be stored to SD (ESP32CAM / TCameraPlus), rather than LittleFS
+// #define OFFLINE_USE_SD 
 
 
 // maximum number of snaps can be saved
@@ -84,8 +84,15 @@ void saveSettings();
 
 #if defined(SUPPORT_OFFLINE)
   #include <FS.h>
-  #if defined(OFFLINE_USE_SD_MMC)
-    #include "SD_MMC.h" 
+  #if defined(OFFLINE_USE_SD)
+    #if defined(FOR_TCAMERAPLUS)
+      #define STORAGE SD
+      #include "SD.h"
+      SPIClass spi = SPIClass();
+    #else
+      #define STORAGE SD_MMC
+      #include "SD_MMC.h"
+    #endif
   #else
     #include <LittleFS.h>
   #endif
@@ -588,9 +595,9 @@ void initializeDD() {
 
 #if defined(SUPPORT_OFFLINE)
   if (offlineStorageInitialized) {
-  #if defined(OFFLINE_USE_SD_MMC)
-    uint64_t total = SD_MMC.totalBytes();
-    uint64_t used = SD_MMC.usedBytes();
+  #if defined(OFFLINE_USE_SD)
+    uint64_t total = STORAGE.totalBytes();
+    uint64_t used = STORAGE.usedBytes();
     uint64_t free = total - used;
   #else
     size_t total = LittleFS.totalBytes();
@@ -1276,18 +1283,24 @@ void saveSettings() {
 bool initializeStorage() {
     dumbdisplay.logToSerial("Initialize offline snap storage ...");
     dumbdisplay.logToSerial("... offlineSnapCount=" + String(offlineSnapCount) + " ...");
-#if defined(OFFLINE_USE_SD_MMC)
-    if (!SD_MMC.begin()) {
+#if defined(OFFLINE_USE_SD)
+  #if defined(FOR_TCAMERAPLUS)
+    spi.begin(21, 22, 19);
+    bool successful = SD.begin(0, spi);
+  #else
+    bool successful = SD_MMC.begin();
+  #endif    
+    if (!successful) {
       dumbdisplay.logToSerial("... failed to begin() SD MMC ...");
       return false;
     }
-    uint8_t cardType = SD_MMC.cardType();
+    uint8_t cardType = STORAGE.cardType();
     if (cardType == CARD_NONE) {
       dumbdisplay.logToSerial("... no SD card ...");
       return false;
     }
-    uint64_t total = SD_MMC.totalBytes();
-    uint64_t used = SD_MMC.usedBytes();
+    uint64_t total = STORAGE.totalBytes();
+    uint64_t used = STORAGE.usedBytes();
     uint64_t free = total - used;
     dumbdisplay.logToSerial("    $ total: " + String(total / 1024) + " KB");
     dumbdisplay.logToSerial("    $ used: " + String(used / 1024) + " KB");
@@ -1321,23 +1334,7 @@ bool initializeStorage() {
     }
     if (!verifyOfflineSnaps()) {
       dumbdisplay.logToSerial("... offline snap metadata looked invalid ...");
-#if defined(OFFLINE_USE_SD_MMC)
-      if (false) {
-        File rootDir = SD_MMC.open("/");
-        bool ok = false;
-        if (rootDir) {
-          String nf = rootDir.getNextFileName();
-          dumbdisplay.logToSerial("... nf=[" + nf + "] ...");
-          if (nf.isEmpty()) {
-            ok = true;
-          }
-          rootDir.close();
-        }
-        if (!ok) {
-          dumbdisplay.logToSerial("... storage not empty ... abort");
-          return false;
-        }
-      }
+#if defined(OFFLINE_USE_SD)
 #else
       dumbdisplay.logToSerial("... reformat ...");
       if (!LittleFS.format()) {
@@ -1365,15 +1362,15 @@ void getOfflineSnapFileName(String& offlineSnapFileName, int offlineSnapIdx) {
   offlineSnapFileName = "/" + offlineSnapNamePrefix + seq + ".jpg";
 }
 bool checkFreeStorage() {
-#if defined(OFFLINE_USE_SD_MMC)
-    uint64_t total = SD_MMC.totalBytes();
-    uint64_t used = SD_MMC.usedBytes();
+#if defined(OFFLINE_USE_SD)
+    uint64_t total = STORAGE.totalBytes();
+    uint64_t used = STORAGE.usedBytes();
     uint64_t free = total - used;
-  #else
+#else
     size_t total = LittleFS.totalBytes();
     size_t used = LittleFS.usedBytes();
     size_t free = total - used;
-  #endif
+#endif
     return free >= MIN_STORE_FREE_BYTE_COUNT;
     //int freePercent = 100.0 * free / total;
     //return freePercent > MIN_STORE_FREE_PERCENT;
@@ -1388,8 +1385,8 @@ bool verifyOfflineSnaps() {
   getOfflineSnapFileName(snapFileName0, startOfflineSnapIdx);
   String snapFileNameN;
   getOfflineSnapFileName(snapFileNameN, startOfflineSnapIdx + offlineSnapCount - 1);
-#if defined(OFFLINE_USE_SD_MMC)
-  bool verified = SD_MMC.exists(snapFileName0) && SD_MMC.exists(snapFileNameN);
+#if defined(OFFLINE_USE_SD)
+  bool verified = STORAGE.exists(snapFileName0) && STORAGE.exists(snapFileNameN);
 #else
   bool verified = LittleFS.exists(snapFileName0) && LittleFS.exists(snapFileNameN);
 #endif
@@ -1407,8 +1404,8 @@ void saveOfflineSnap(uint8_t *bytes, int byteCount) {
   //String snapFileName = "/" + offlineSnapNamePrefix + String(startOfflineSnapIdx + offlineSnapCount) + ".jpg";
   String offlineSnapFileName;
   getOfflineSnapFileName(offlineSnapFileName, startOfflineSnapIdx + offlineSnapCount);
-#if defined(OFFLINE_USE_SD_MMC)
-  File f = SD_MMC.open(offlineSnapFileName, FILE_WRITE);
+#if defined(OFFLINE_USE_SD)
+  File f = STORAGE.open(offlineSnapFileName, FILE_WRITE);
 #else
   File f = LittleFS.open(offlineSnapFileName, "w");
 #endif
@@ -1432,8 +1429,8 @@ bool retrieveOfflineSnap(const String& offlineSnapFileName, uint8_t*& bytes, int
     dumbdisplay.logToSerial("! storage for offline snap not ready !");
     return false;
   }
-#if defined(OFFLINE_USE_SD_MMC)
-  File f = SD_MMC.open(offlineSnapFileName, FILE_READ);
+#if defined(OFFLINE_USE_SD)
+  File f = STORAGE.open(offlineSnapFileName, FILE_READ);
 #else
   File f = LittleFS.open(offlineSnapFileName, "r");
 #endif
@@ -1444,8 +1441,8 @@ bool retrieveOfflineSnap(const String& offlineSnapFileName, uint8_t*& bytes, int
     f.readBytes((char*) buf, byteCount);
     bytes = buf;
     f.close();
-#if defined(OFFLINE_USE_SD_MMC)
-    SD_MMC.remove(offlineSnapFileName);
+#if defined(OFFLINE_USE_SD)
+    STORAGE.remove(offlineSnapFileName);
 #else
     LittleFS.remove(offlineSnapFileName);
 #endif

@@ -6,8 +6,10 @@
 // // ***
 // #include "_secret.h"
 
-#ifdef FOR_ESP32CAM
-  #define OFFLINE_USE_SD_MMC 
+#if defined(FOR_ESP32CAM)
+  #define OFFLINE_USE_SD
+#elif defined(FOR_TCAMERAPLUS)
+  #define OFFLINE_USE_SD
 #endif
 
 #define MORE_LOGGING
