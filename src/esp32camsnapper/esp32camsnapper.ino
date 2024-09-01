@@ -25,16 +25,27 @@
 
 
 // maximum number of snaps can be saved
-#define MAX_SNAP_COUNT                      299
+// #define MAX_SNAP_COUNT                      299
 
 // maximum number of offline snaps can be taken
-#define MAX_OFFLINE_SNAP_COUNT              599
+//#define MAX_OFFLINE_SNAP_COUNT              599
 
 // maximum number of images to keep cached when streaming snaps to DD app
 #define STREAM_KEEP_IMAGE_COUNT             20
 
 // minimum free storage (SD card) needed for offline snap taking
 #define MIN_STORE_FREE_BYTE_COUNT           128 * 1024
+
+// number of seconds to sleep when idle .. if went to sleep, will need to reboot in order to connect
+#define IDLE_SLEEP_SECS                     30
+
+
+// maximum PER-HOUR frame rate for it to go to sleep during offline snapping
+#define MAX_SLEEP_PH_FRAME_RATE             720
+// delay in ms for the camera to be ready after sleep wake up
+#define SLEEP_WAKEUP_TAKEN_SNAP_DELAY_MS    2000
+// sleep wake up timer allowance in ms
+#define SLEEP_TIMER_ALLOWANCE_MS            SLEEP_WAKEUP_TAKEN_SNAP_DELAY_MS + 800
 
 
 // if want to reset settings / offline snap metadata saved in EEPROM, set the following to something else
@@ -105,6 +116,41 @@ void saveSettings();
 #endif
 
 
+
+
+
+#if defined(IDLE_SLEEP_SECS)   
+  RTC_DATA_ATTR int tzMins = 0;
+  RTC_DATA_ATTR int wakeupOfflineSnapMillis = -1;
+#else
+  int tzMins = 0;
+#endif
+
+unsigned long getTimeNow(String* timeNow) {
+  unsigned long now = millis();
+  if (timeNow == NULL) {
+    return now;
+  }
+  *timeNow = String(now / 1000.0);
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo, 0)) {
+    return now; 
+  }
+  //Serial.println(&timeinfo, "// * %A, %B %d %Y %H:%M:%S");
+  char buf[64];
+  strftime(buf, 64, "%A, %B %d %Y %H:%M:%S", &timeinfo);
+  String localTime = buf;
+  if (tzMins != 0) {
+    int tzM = abs(tzMins);
+    localTime += (tzMins > 0 ? "+" : "-") + String(100 + (tzM / 60)).substring(1) + String(100 + (tzM % 60)).substring(1);
+  }
+  *timeNow = *timeNow + String("(") + localTime + String(")");
+  return now;
+}
+
+
+
+
 extern DDMasterResetPassiveConnectionHelper pdd;
 void initializeDD();
 void updateDD(bool isFirstUpdate);
@@ -168,19 +214,19 @@ int startTransferOfflineSnapCount = 0;
 String transferImageFileNamePrefixForOfflineSnaps;
 
 
-#if defined(MORE_LOGGING)
-// just for checking the [local] date time stored in ESP32
-bool printLocalTime() {
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo, 0)) {
-    Serial.println("// xxx failed to obtain time xxx");
-    return false;
-  }
-  Serial.println(&timeinfo, "// * %A, %B %d %Y %H:%M:%S");
-  return true;
-}
-unsigned long lastPrintedLocalTimeMs = 0;
-#endif
+// #if defined(MORE_LOGGING)
+// // just for checking the [local] date time stored in ESP32
+// bool printLocalTime() {
+//   struct tm timeinfo;
+//   if (!getLocalTime(&timeinfo, 0)) {
+//     Serial.println("// xxx failed to obtain time xxx");
+//     return false;
+//   }
+//   Serial.println(&timeinfo, "// * %A, %B %d %Y %H:%M:%S");
+//   return true;
+// }
+// unsigned long lastPrintedLocalTimeMs = 0;
+// #endif
 
 void setup() {
   Serial.begin(115200);
@@ -189,16 +235,45 @@ void setup() {
 #if defined(SUPPORT_OFFLINE)
   initializeStorage();
 #endif
+
+#if defined(IDLE_SLEEP_SECS)   
+  if (wakeupOfflineSnapMillis != -1) {
+    String localTime;
+    unsigned long now = getTimeNow(&localTime);
+    dumbdisplay.log("*** woke up for offline snap ... now=" + localTime + " ***");
+
+    framesize_t frameSize = cameraFrameSizes[currentFrameSizeIndex];
+    if (initializeCamera(frameSize, cameraQuality)) { 
+      if (true) { 
+        delay(SLEEP_WAKEUP_TAKEN_SNAP_DELAY_MS);
+        camera_fb_t* camera_fb = esp_camera_fb_get();
+        esp_camera_fb_return(camera_fb);
+      }
+      camera_fb_t* camera_fb = esp_camera_fb_get();
+      saveOfflineSnap(camera_fb->buf, camera_fb->len);
+      esp_camera_fb_return(camera_fb);
+    } else {
+      dumbdisplay.logToSerial("failed to initialize camera for offline snapping");
+    }
+
+    dumbdisplay.log("*** going back to sleep ***");
+    esp_sleep_enable_timer_wakeup(wakeupOfflineSnapMillis * 1000);  // in micro second
+    esp_deep_sleep_start();
+    // the above call will not return
+  }    
+#endif
 }
 
+long idle_start_ms = 0;
+
 void loop() {
-#if defined(MORE_LOGGING)  
-  unsigned long now = millis();
-  if (now - lastPrintedLocalTimeMs >= 5000) {
-    printLocalTime();
-    lastPrintedLocalTimeMs = now;
-  }
-#endif
+// #if defined(MORE_LOGGING)  
+//   unsigned long now = millis();
+//   if (now - lastPrintedLocalTimeMs >= 5000) {
+//     printLocalTime();
+//     lastPrintedLocalTimeMs = now;
+//   }
+// #endif
 
   pdd.loop([]() {
     initializeDD();
@@ -249,8 +324,6 @@ LedGridDDLayer* progressLayer;
 ImageRetrieverDDTunnel* imageRetrieverTunnel = NULL;
 BasicDDTunnel* generalTunnel = NULL;
 
-
-int tzMins = 0;
 
 bool cameraReady = false;
 long lastCaptureImageMs = 0;
@@ -308,16 +381,16 @@ void cachePMFrameRateToText(int framePerMinute, String& text) {
 }
 
 
-bool checkSnapFree() {
-  if (savedSnapCount >= MAX_SNAP_COUNT) {
-    dumbdisplay.log(String("!!! reached max snap count ") + String(MAX_SNAP_COUNT) + " !!!");
-    delay(1000);
-    return false;
-  } else {
-    return true;
-  }
+// bool checkSnapFree() {
+//   if (savedSnapCount >= MAX_SNAP_COUNT) {
+//     dumbdisplay.log(String("!!! reached max snap count ") + String(MAX_SNAP_COUNT) + " !!!");
+//     delay(1000);
+//     return false;
+//   } else {
+//     return true;
+//   }
 
-}
+// }
 
 
 void setupCurrentStreamImageName() {
@@ -617,7 +690,7 @@ void initializeDD() {
     enableOfflineSelectionLayer->disabled(true);
 #endif
 
-  checkSnapFree();  
+  //checkSnapFree();  
 }
 
 
@@ -639,9 +712,9 @@ void setStateToTransferOfflineSnaps() {
 #endif
 
 void handleSaveImage(bool then_to_stream) {
-  if (!checkSnapFree()) {
-    return;
-  }
+  // if (!checkSnapFree()) {
+  //   return;
+  // }
   setupCurrentSnapFileName();
   imageLayer->saveCachedImageFile(currentStreamImageFileName, currentSnapFileName);
   imageLayer->drawImageFileFit(currentSnapFileName);
@@ -707,6 +780,11 @@ long getCurrentPHFrameRate() {
 
 void updateDD(bool isFirstUpdate) {
   if (isFirstUpdate) {
+    if (true) {
+      String localTime;
+      unsigned long now = getTimeNow(&localTime);
+      dumbdisplay.log("*** just connected ... now=" + localTime + " ***");
+    }
     if (currentCachePMFrameRateIndex != -1) {
       frameRateSelectionLayer->select(currentCachePMFrameRateIndex);
     } else {
@@ -1010,6 +1088,32 @@ void deinitializeDD() {
 }
 
 void handleIdle(bool justBecameIdle) {
+    if (justBecameIdle) {
+      String localTime;
+      unsigned long now = getTimeNow(&localTime);
+      dumbdisplay.log("*** just became idle ... now=" + localTime + " ***");
+      idle_start_ms = now;
+    }
+#if defined(IDLE_SLEEP_SECS)   
+    long diff = millis() - idle_start_ms;
+    if (diff >= (1000 * IDLE_SLEEP_SECS)) {
+      int sleepTimeoutMillis = 0;
+      int cameraFramePerHour = getCurrentPHFrameRate();
+      if (cameraFramePerHour <= MAX_SLEEP_PH_FRAME_RATE) {
+        sleepTimeoutMillis = ((60 * 60 * 1000) / cameraFramePerHour) - SLEEP_TIMER_ALLOWANCE_MS;
+      }
+      String localTime;
+      unsigned long now = getTimeNow(&localTime);
+      dumbdisplay.log("*** going to sleep ... now=" + localTime + " ***");
+      if (sleepTimeoutMillis > 0) {
+        wakeupOfflineSnapMillis = sleepTimeoutMillis;
+        dumbdisplay.log("   . wakeupOfflineSnapMillis=" + wakeupOfflineSnapMillis);
+        esp_sleep_enable_timer_wakeup(wakeupOfflineSnapMillis * 1000);  // in micro second
+      }
+      esp_deep_sleep_start();    
+      // the above call will not return
+    }
+#endif 
 #if defined(SUPPORT_OFFLINE)  
   if (offlineStorageInitialized && enableOffline) {
     if (justBecameIdle) {
@@ -1018,13 +1122,16 @@ void handleIdle(bool justBecameIdle) {
         cameraReady = initializeCamera(frameSize, cameraQuality); 
       }
       if (cameraReady) {
-        camera_fb_t* camera_fb = esp_camera_fb_get();
-        esp_camera_fb_return(camera_fb);
-        lastCaptureImageMs = 0;
+        if (false) {
+          delay(2000);
+          camera_fb_t* camera_fb = esp_camera_fb_get();
+          esp_camera_fb_return(camera_fb);
+        }
+        lastCaptureImageMs = millis();  // treat it as just taken an offline snap
       }
     } else {
       if (cameraReady) {
-        boolean saveImage = offlineSnapCount < MAX_OFFLINE_SNAP_COUNT;
+        boolean saveImage = true;//offlineSnapCount < MAX_OFFLINE_SNAP_COUNT;
         int cameraFramePerHour = getCurrentPHFrameRate();
         if (cameraFramePerHour > 0) {
           long captureImageGapMs = (60 * 60 * 1000) / cameraFramePerHour;
@@ -1241,7 +1348,7 @@ void initRestoreSettings() {
   if (cameraBrightness < -2 || cameraBrightness > 2) {
     cameraBrightness = 0;
   }
-  if (currentCachePMFrameRateIndex < 0 || currentCachePMFrameRateIndex > cachePMFrameRateCount) {
+  if (currentCachePMFrameRateIndex != -1 && (currentCachePMFrameRateIndex < 0 || currentCachePMFrameRateIndex > cachePMFrameRateCount)) {
     currentCachePMFrameRateIndex = INIT_FRAME_RATE_INDEX;
   }
   if (currentFrameSizeIndex < 0 || currentFrameSizeIndex > cameraFrameSizeCount) {
@@ -1328,10 +1435,10 @@ bool initializeStorage() {
       }
     }    
 #endif
-    if (!checkSnapFree()) {
-      dumbdisplay.logToSerial("... insufficient storage ...");
-      return false;
-    }
+    // if (!checkSnapFree()) {
+    //   dumbdisplay.logToSerial("... insufficient storage ...");
+    //   return false;
+    // }
     if (!verifyOfflineSnaps()) {
       dumbdisplay.logToSerial("... offline snap metadata looked invalid ...");
 #if defined(OFFLINE_USE_SD)
