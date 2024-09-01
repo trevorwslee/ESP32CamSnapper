@@ -37,7 +37,7 @@
 #define MIN_STORE_FREE_BYTE_COUNT           128 * 1024
 
 // number of seconds to sleep when idle .. if went to sleep, will need to reboot in order to connect
-#define IDLE_SLEEP_SECS                     30
+#define IDLE_SLEEP_SECS                     120
 
 
 // maximum PER-HOUR frame rate for it to go to sleep during offline snapping
@@ -161,7 +161,7 @@ const int cameraFrameSizeCount = 5;
 framesize_t cameraFrameSizes[cameraFrameSizeCount] = {FRAMESIZE_QVGA, FRAMESIZE_VGA, FRAMESIZE_SVGA, FRAMESIZE_HD, FRAMESIZE_SXGA};
 
 const int cachePMFrameRateCount = 4; 
-int cachePMFrameRates[cachePMFrameRateCount] = {60 * 5, 60 * 2, 60, 1};
+int cachePMFrameRates[cachePMFrameRateCount] = {60 * 5, 60 * 2, 60, 30};
 
 const String snapDir = "snaps";
 const String offlineSnapNamePrefix = "off_";
@@ -326,6 +326,7 @@ BasicDDTunnel* generalTunnel = NULL;
 
 
 bool cameraReady = false;
+bool cachedImageOnce = false;
 long lastCaptureImageMs = 0;
 
 long fps_lastMs = -1;
@@ -832,6 +833,7 @@ void updateDD(bool isFirstUpdate) {
     framesize_t frameSize = cameraFrameSizes[currentFrameSizeIndex];
     dumbdisplay.logToSerial("Initializing camera ...");
     cameraReady = initializeCamera(frameSize, cameraQuality); 
+    cachedImageOnce = false;
     if (cameraReady) {
       dumbdisplay.logToSerial("... initialized camera!");
       String fs;
@@ -903,7 +905,7 @@ void updateDD(bool isFirstUpdate) {
     fb = customFrameRateSelectionLayer->getFeedback();
     if (fb != NULL) {
       if (fb->type == CUSTOM) {
-        int phFrameRate = fb->text.toInt();
+        int phFrameRate = fb->text.isEmpty() ? customCachePHFrameRate : fb->text.toInt();
         if (phFrameRate >= 1 && phFrameRate <= 3600) {
           customCachePHFrameRate = phFrameRate;
           currentCachePMFrameRateIndex = -1;
@@ -969,6 +971,10 @@ void updateDD(bool isFirstUpdate) {
       imageLayer->flash();
       cacheImage = true;  // force cache one
     } 
+    if (!cachedImageOnce) {
+      cacheImage = true;
+      cachedImageOnce = true;
+    }
     bool justCapturedImage = false;
     if (cacheImage) {
       setupCurrentStreamImageName();
@@ -1519,10 +1525,12 @@ void saveOfflineSnap(uint8_t *bytes, int byteCount) {
   if (f) {
     f.write(bytes, byteCount);
     f.flush();
-#if defined(MORE_LOGGING)    
     int size = f.size();
     long ts = f.getLastWrite();
+#if defined(MORE_LOGGING)    
     dumbdisplay.logToSerial(String("! written offline snap to  [") + offlineSnapFileName + "] ... size=" + String(size) + "; ts=" + String(ts));
+#else
+    dumbdisplay.logToSerial(String("! written offline snap to  [") + offlineSnapFileName + "] ... size=" + String(size / 1024.0 / 1024.0) + "MB");
 #endif
     f.close();
     offlineSnapCount = offlineSnapCount + 1;
