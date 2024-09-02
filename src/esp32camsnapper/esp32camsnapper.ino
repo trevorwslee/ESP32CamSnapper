@@ -37,7 +37,7 @@
 #define MIN_STORE_FREE_BYTE_COUNT           128 * 1024
 
 // number of seconds to sleep when idle .. if went to sleep, will need to reboot in order to connect
-#define IDLE_SLEEP_SECS                     120
+#define IDLE_SLEEP_SECS                     60
 
 
 // maximum PER-HOUR frame rate for it to go to sleep during offline snapping
@@ -120,14 +120,14 @@ void saveSettings();
 
 
 #if defined(IDLE_SLEEP_SECS)   
-  RTC_DATA_ATTR int tzMins = 0;
-  RTC_DATA_ATTR int wakeupOfflineSnapMillis = -1;
+  RTC_DATA_ATTR int32_t tzMins = 0;
+  RTC_DATA_ATTR int64_t wakeupOfflineSnapMillis = -1;
 #else
   int tzMins = 0;
 #endif
 
-unsigned long getTimeNow(String* timeNow) {
-  unsigned long now = millis();
+long getTimeNow(String* timeNow) {
+  long now = millis();
   if (timeNow == NULL) {
     return now;
   }
@@ -139,7 +139,7 @@ unsigned long getTimeNow(String* timeNow) {
   //Serial.println(&timeinfo, "// * %A, %B %d %Y %H:%M:%S");
   char buf[64];
   strftime(buf, 64, "%A, %B %d %Y %H:%M:%S", &timeinfo);
-  String localTime = buf;
+  String localTime = String(buf);
   if (tzMins != 0) {
     int tzM = abs(tzMins);
     localTime += (tzMins > 0 ? "+" : "-") + String(100 + (tzM / 60)).substring(1) + String(100 + (tzM % 60)).substring(1);
@@ -173,7 +173,7 @@ bool cameraVFlip = false;
 bool cameraHMirror = false;
 int8_t currentFrameSizeIndex = INIT_FRAME_SIZE_INDEX;
 int8_t currentCachePMFrameRateIndex = INIT_FRAME_RATE_INDEX;
-int16_t customCachePHFrameRate = 900;
+int16_t customCachePHFrameRate = MAX_SLEEP_PH_FRAME_RATE;
 bool enableOffline = false;
 
 
@@ -239,8 +239,8 @@ void setup() {
 #if defined(IDLE_SLEEP_SECS)   
   if (wakeupOfflineSnapMillis != -1) {
     String localTime;
-    unsigned long now = getTimeNow(&localTime);
-    dumbdisplay.log("*** woke up for offline snap ... now=" + localTime + " ***");
+    long now = getTimeNow(&localTime);
+    Serial.println("*** woke up for offline snap ... now=" + localTime + " ***");
 
     framesize_t frameSize = cameraFrameSizes[currentFrameSizeIndex];
     if (initializeCamera(frameSize, cameraQuality)) { 
@@ -253,10 +253,11 @@ void setup() {
       saveOfflineSnap(camera_fb->buf, camera_fb->len);
       esp_camera_fb_return(camera_fb);
     } else {
-      dumbdisplay.logToSerial("failed to initialize camera for offline snapping");
+      Serial.println("failed to initialize camera for offline snapping");
     }
 
-    dumbdisplay.log("*** going back to sleep ***");
+    Serial.println("*** going back to sleep ... timeout=" + String(wakeupOfflineSnapMillis / 1000.0) + "s ***");
+    Serial.flush();
     esp_sleep_enable_timer_wakeup(wakeupOfflineSnapMillis * 1000);  // in micro second
     esp_deep_sleep_start();
     // the above call will not return
@@ -783,8 +784,8 @@ void updateDD(bool isFirstUpdate) {
   if (isFirstUpdate) {
     if (true) {
       String localTime;
-      unsigned long now = getTimeNow(&localTime);
-      dumbdisplay.log("*** just connected ... now=" + localTime + " ***");
+      long now = getTimeNow(&localTime);
+      dumbdisplay.logToSerial("*** just connected ... now=" + localTime + " ***");
     }
     if (currentCachePMFrameRateIndex != -1) {
       frameRateSelectionLayer->select(currentCachePMFrameRateIndex);
@@ -1089,37 +1090,44 @@ void updateDD(bool isFirstUpdate) {
 }
 
 void deinitializeDD() {
+ #if defined(SUPPORT_OFFLINE)  
+  if (!enableOffline) {
+    deinitializeCamera();
+    cameraReady = false;
+  }
+#else
   deinitializeCamera();
   cameraReady = false;
+#endif  
 }
 
 void handleIdle(bool justBecameIdle) {
     if (justBecameIdle) {
       String localTime;
-      unsigned long now = getTimeNow(&localTime);
-      dumbdisplay.log("*** just became idle ... now=" + localTime + " ***");
+      long now = getTimeNow(&localTime);
+      dumbdisplay.logToSerial("*** just became idle ... now=" + localTime + " ***");
       idle_start_ms = now;
     }
-#if defined(IDLE_SLEEP_SECS)   
-    long diff = millis() - idle_start_ms;
-    if (diff >= (1000 * IDLE_SLEEP_SECS)) {
-      int sleepTimeoutMillis = 0;
-      int cameraFramePerHour = getCurrentPHFrameRate();
-      if (cameraFramePerHour <= MAX_SLEEP_PH_FRAME_RATE) {
-        sleepTimeoutMillis = ((60 * 60 * 1000) / cameraFramePerHour) - SLEEP_TIMER_ALLOWANCE_MS;
-      }
-      String localTime;
-      unsigned long now = getTimeNow(&localTime);
-      dumbdisplay.log("*** going to sleep ... now=" + localTime + " ***");
-      if (sleepTimeoutMillis > 0) {
-        wakeupOfflineSnapMillis = sleepTimeoutMillis;
-        dumbdisplay.log("   . wakeupOfflineSnapMillis=" + wakeupOfflineSnapMillis);
-        esp_sleep_enable_timer_wakeup(wakeupOfflineSnapMillis * 1000);  // in micro second
-      }
-      esp_deep_sleep_start();    
-      // the above call will not return
-    }
-#endif 
+// #if defined(IDLE_SLEEP_SECS)   
+//     long diff = millis() - idle_start_ms;
+//     if (diff >= (1000 * IDLE_SLEEP_SECS)) {
+//       int sleepTimeoutMillis = 0;
+//       int cameraFramePerHour = getCurrentPHFrameRate();
+//       if (cameraFramePerHour <= MAX_SLEEP_PH_FRAME_RATE) {
+//         sleepTimeoutMillis = ((60 * 60 * 1000) / cameraFramePerHour) - SLEEP_TIMER_ALLOWANCE_MS;
+//       }
+//       String localTime;
+//       unsigned long now = getTimeNow(&localTime);
+//       dumbdisplay.log("*** going to sleep ... now=" + localTime + " ***");
+//       if (sleepTimeoutMillis > 0) {
+//         wakeupOfflineSnapMillis = sleepTimeoutMillis;
+//         dumbdisplay.log("   . wakeupOfflineSnapMillis=" + wakeupOfflineSnapMillis);
+//         esp_sleep_enable_timer_wakeup(wakeupOfflineSnapMillis * 1000);  // in micro second
+//       }
+//       esp_deep_sleep_start();    
+//       // the above call will not return
+//     }
+// #endif 
 #if defined(SUPPORT_OFFLINE)  
   if (offlineStorageInitialized && enableOffline) {
     if (justBecameIdle) {
@@ -1127,14 +1135,14 @@ void handleIdle(bool justBecameIdle) {
         framesize_t frameSize = cameraFrameSizes[currentFrameSizeIndex];
         cameraReady = initializeCamera(frameSize, cameraQuality); 
       }
-      if (cameraReady) {
-        if (false) {
-          delay(2000);
-          camera_fb_t* camera_fb = esp_camera_fb_get();
-          esp_camera_fb_return(camera_fb);
-        }
-        lastCaptureImageMs = millis();  // treat it as just taken an offline snap
-      }
+      lastCaptureImageMs = 0;
+      // if (cameraReady) {
+      //   if (false) {
+      //     camera_fb_t* camera_fb = esp_camera_fb_get();
+      //     esp_camera_fb_return(camera_fb);
+      //     lastCaptureImageMs = millis();  // treat it as just taken an offline snap
+      //   }
+      // }
     } else {
       if (cameraReady) {
         boolean saveImage = true;//offlineSnapCount < MAX_OFFLINE_SNAP_COUNT;
@@ -1150,11 +1158,42 @@ void handleIdle(bool justBecameIdle) {
           camera_fb_t* camera_fb = esp_camera_fb_get();
           saveOfflineSnap(camera_fb->buf, camera_fb->len);
           esp_camera_fb_return(camera_fb);
-          lastCaptureImageMs = millis();;
+          lastCaptureImageMs = millis();
         }
       }
     }
   }
+#endif
+#if defined(IDLE_SLEEP_SECS)   
+    long diff = millis() - idle_start_ms;
+    if (diff >= (1000 * IDLE_SLEEP_SECS)) {
+  #if defined(SUPPORT_OFFLINE)  
+      long sleepTimeoutMillis = 0;
+      int cameraFramePerHour = getCurrentPHFrameRate();
+      if (cameraFramePerHour <= MAX_SLEEP_PH_FRAME_RATE) {
+        sleepTimeoutMillis = ((60 * 60 * 1000) / cameraFramePerHour) - SLEEP_TIMER_ALLOWANCE_MS;
+      }
+      String localTime;
+      long now = getTimeNow(&localTime);
+      Serial.println("*** going to sleep ... now=" + localTime + " ... sleepTimeoutMillis=" + String(sleepTimeoutMillis) + " ***");
+      //dumbdisplay.logToSerial("*** going to sleep ***");
+      if (sleepTimeoutMillis > 0) {
+        wakeupOfflineSnapMillis = sleepTimeoutMillis;
+        if (lastCaptureImageMs > 0) {
+            long diffMs = now - lastCaptureImageMs - SLEEP_TIMER_ALLOWANCE_MS;
+            if (diffMs > 0) {
+              sleepTimeoutMillis = diffMs;
+            }
+        }
+        Serial.println("   . sleepTimeoutMillis=" + sleepTimeoutMillis);
+        Serial.println("   . wakeupOfflineSnapMillis=" + wakeupOfflineSnapMillis);
+        Serial.flush();
+        esp_sleep_enable_timer_wakeup(sleepTimeoutMillis * 1000);  // in micro second
+      }
+  #endif    
+      esp_deep_sleep_start();    
+      // the above call will not return
+    }
 #endif
 }
 
@@ -1235,7 +1274,7 @@ bool resetCameraImageSettings() {
 
   sensor_t *s = esp_camera_sensor_get();
   if (s == NULL) {
-    dumbdisplay.log("Error: problem reading camera sensor settings", true);
+    dumbdisplay.logToSerial("Error: problem reading camera sensor settings");
     return 0;
   }
 
@@ -1294,13 +1333,13 @@ bool initializeCamera(framesize_t frameSize, int jpegQuality) {
   // check the esp32cam board has a psram chip installed (extra memory used for storing captured images)
   //    Note: if not using "AI thinker esp32 cam" in the Arduino IDE, SPIFFS must be enabled
   if (!psramFound()) {
-    dumbdisplay.log("Error: No PSRam found!", true);
+    dumbdisplay.logToSerial("Error: No PSRam found!");
     return false;
   }
 
   esp_err_t camerr = esp_camera_init(&config);  // initialize the camera
   if (camerr != ESP_OK) {
-    dumbdisplay.log(String("ERROR: Camera init failed with error -- ") + String(camerr), true);
+    dumbdisplay.logToSerial(String("ERROR: Camera init failed with error -- ") + String(camerr));
   }
 
   resetCameraImageSettings();                   // apply custom camera settings
@@ -1536,7 +1575,7 @@ void saveOfflineSnap(uint8_t *bytes, int byteCount) {
     offlineSnapCount = offlineSnapCount + 1;
     writeOfflineSnapPosition();
   } else {
-    dumbdisplay.log(String("unable to open file [") + offlineSnapFileName + "] for offline snap");
+    dumbdisplay.logToSerial(String("unable to open file [") + offlineSnapFileName + "] for offline snap");
   }
 }
 bool retrieveOfflineSnap(const String& offlineSnapFileName, uint8_t*& bytes, int& byteCount, long& ts) {
@@ -1580,7 +1619,7 @@ bool transferOneOfflineSnap() {
   int byteCount = 0;
   long ts;
   if (!retrieveOfflineSnap(offlineSnapFileName, bytes, byteCount, ts)) {
-    dumbdisplay.log("Failed to read offline snap [" + offlineSnapFileName + "] to transfer to [" + composedImageFileName + "]", true);
+    dumbdisplay.logToSerial("Failed to read offline snap [" + offlineSnapFileName + "] to transfer to [" + composedImageFileName + "]");
     return false;
   }
   int64_t imageTimestamp = 1000 * (int64_t) (ts - 60 * tzMins);  // imageTimestamp should be in ms
