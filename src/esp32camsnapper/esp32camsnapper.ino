@@ -18,6 +18,9 @@
 // #define OFFLINE_USE_SD 
 // *** minimum free storage (SD / LittleFS storage) needed for offline snap taking
 #define MIN_STORE_FREE_BYTE_COUNT           128 * 1024
+// *** if desired to disable offline snap taking upon reset of ESP, uncomment the following
+// #define DISABLE_OFFLINE_UPON_RESET
+
 
 // *** number of seconds mark to put ESP to sleep when idle (not connected); if ESP went to sleep, will need to reset it in order to connect; comment out if not desired
 #define IDLE_SLEEP_SECS                     60
@@ -27,7 +30,6 @@
 #define SLEEP_WAKEUP_TAKE_SNAP_DELAY_MS     2000
 // *** ESP sleep wake up timer overhead in ms
 #define SLEEP_TIMER_OVERHEAD_MS             800
-
 
 // *** if want to reset settings / offline snap metadata saved in EEPROM, set the following to something else
 const int32_t HEADER = 20240902;
@@ -129,8 +131,8 @@ void deinitializeDD();
 void handleIdle(bool justBecameIdle);
 
 // 5 frame size selections
-const int cameraFrameSizeCount = 5;
-framesize_t cameraFrameSizes[cameraFrameSizeCount] = {FRAMESIZE_QVGA, FRAMESIZE_VGA, FRAMESIZE_SVGA, FRAMESIZE_HD, FRAMESIZE_SXGA};
+const int cameraFrameSizeCount = 6;
+framesize_t cameraFrameSizes[cameraFrameSizeCount] = {FRAMESIZE_QVGA, FRAMESIZE_VGA, FRAMESIZE_SVGA, FRAMESIZE_XGA, FRAMESIZE_HD, FRAMESIZE_SXGA};
 
 // 4 PER-MINUTE frame rate selections
 const int cachePMFrameRateCount = 4; 
@@ -241,6 +243,13 @@ void setup() {
     esp_deep_sleep_start();
     // !!! the above call will not return !!!
   }    
+#endif
+#if defined(SUPPORT_OFFLINE) && defined(DISABLE_OFFLINE_UPON_RESET)
+  if (enableOffline) {
+    dumbdisplay.logToSerial("*** disable offline snap upon reset ***");
+    enableOffline = false;
+    saveSettings();
+  }
 #endif
 }
 
@@ -400,9 +409,10 @@ bool setupCurrentStreamImageNameOfOffset(int offset) {
 }
 void formatDataTimeForFilename(String& filenameDateTime, const DDDateTime* pDateTime) {
   if (pDateTime == NULL) {
-    filenameDateTime = "0000-00-00_000000";
+    filenameDateTime = "00000000_000000";
   } else {
-    filenameDateTime = String(pDateTime->year) + "-" + String(pDateTime->month) + "-" + String(pDateTime->day) + "_" + String(pDateTime->hour + 100).substring(1) + String(pDateTime->minute + 100).substring(1) + String(pDateTime->second + 100).substring(1);
+    filenameDateTime = String(pDateTime->year) + "-" + String(100 + pDateTime->month).substring(1) + "-" + String(100 + pDateTime->day).substring(1) + "_" +
+                       String(pDateTime->hour + 100).substring(1) + String(pDateTime->minute + 100).substring(1) + String(pDateTime->second + 100).substring(1);
   }
 }
 void setupCurrentSnapFileName() {
@@ -1218,6 +1228,23 @@ void handleIdle(bool justBecameIdle) {
   #define VSYNC_GPIO_NUM    5       // vsync_pin
   #define HREF_GPIO_NUM     27      // href_pin
   #define PCLK_GPIO_NUM     25      // pixel_clock_pin
+#elif defined(FOR_ESP32S3EYE)
+  #define PWDN_GPIO_NUM     -1
+  #define RESET_GPIO_NUM    -1      // -1 = not used
+  #define XCLK_GPIO_NUM     15
+  #define SIOD_GPIO_NUM      4      // i2c sda
+  #define SIOC_GPIO_NUM      5      // i2c scl
+  #define Y9_GPIO_NUM       16
+  #define Y8_GPIO_NUM       17
+  #define Y7_GPIO_NUM       18
+  #define Y6_GPIO_NUM       12
+  #define Y5_GPIO_NUM       10
+  #define Y4_GPIO_NUM        8
+  #define Y3_GPIO_NUM        9
+  #define Y2_GPIO_NUM       11
+  #define VSYNC_GPIO_NUM     6      // vsync_pin
+  #define HREF_GPIO_NUM      7      // href_pin
+  #define PCLK_GPIO_NUM     13      // pixel_clock_pin
 #else
   #error board not supported  
 #endif
