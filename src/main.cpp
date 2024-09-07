@@ -3,11 +3,12 @@
 // #define WIFI_SSID           "your-wifi-ssid"
 // #define WIFI_PASSWORD       "your-wifi-password"
 // ***
-//#include "_secret.h"
+#include "_secret.h"
 
-// *** use Bluetooth with the following device name
-#define BLUETOOTH "ESP32CamSnapper"
-
+#if !defined(FOR_ESP32S3EYE)
+  // *** use Bluetooth with the following device name
+  #define BLUETOOTH "ESP32CamSnapper"
+#endif
 
 #if defined(FOR_ESP32CAM)
   // *** ESP32CAM has SD

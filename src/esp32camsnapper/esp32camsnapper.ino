@@ -22,7 +22,7 @@
 // #define DISABLE_OFFLINE_UPON_RESET
 
 
-// *** number of seconds mark to put ESP to sleep when idle (not connected); if ESP went to sleep, will need to reset it in order to connect; comment out if not desired
+// *** number of seconds to put ESP to sleep when idle (not connected); if ESP went to sleep, will need to reset it in order to connect; comment out if not desired
 #define IDLE_SLEEP_SECS                     60
 // *** maximum PER-HOUR frame rate for ESP to go to sleep during offline snapping (i.e. honor IDLE_SLEEP_SECS)
 #define MAX_SLEEP_PH_FRAME_RATE             720
@@ -32,7 +32,7 @@
 #define SLEEP_TIMER_OVERHEAD_MS             800
 
 // *** if want to reset settings / offline snap metadata saved in EEPROM, set the following to something else
-const int32_t HEADER = 20240902;
+const int32_t HEADER = 20240907;
 
 
 // #define MORE_LOGGING
@@ -58,6 +58,8 @@ const int32_t HEADER = 20240902;
   #define INIT_FRAME_RATE_INDEX 2
 #endif
 
+
+#define INIT_CAMERA_QUALITY 15
 
 #include "esp_camera.h"
 #include <EEPROM.h> 
@@ -106,7 +108,7 @@ long getTimeNow(String* timeNow) {
   if (timeNow == NULL) {
     return now;
   }
-  *timeNow = String(now / 1000.0);
+  *timeNow = String(now);
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo, 0)) {
     return now;  // ESP's clock not set 
@@ -126,13 +128,13 @@ long getTimeNow(String* timeNow) {
 
 extern DDMasterResetPassiveConnectionHelper pdd;
 void initializeDD();
-void updateDD(bool isFirstUpdate);
+bool updateDD(bool isFirstUpdate);
 void deinitializeDD();
 void handleIdle(bool justBecameIdle);
 
 // 5 frame size selections
-const int cameraFrameSizeCount = 6;
-framesize_t cameraFrameSizes[cameraFrameSizeCount] = {FRAMESIZE_QVGA, FRAMESIZE_VGA, FRAMESIZE_SVGA, FRAMESIZE_XGA, FRAMESIZE_HD, FRAMESIZE_SXGA};
+const int cameraFrameSizeCount = 7;
+framesize_t cameraFrameSizes[cameraFrameSizeCount] = {FRAMESIZE_QVGA, FRAMESIZE_VGA, FRAMESIZE_SVGA, FRAMESIZE_XGA, FRAMESIZE_HD, FRAMESIZE_SXGA, FRAMESIZE_UXGA};
 
 // 4 PER-MINUTE frame rate selections
 const int cachePMFrameRateCount = 4; 
@@ -145,44 +147,45 @@ const String offlineSnapNamePrefix = "off_";
 
 // the following settings are stored in EEPROM
 int8_t cameraBrightness = 0;
-uint8_t cameraQuality = 15;
+uint8_t cameraQuality = INIT_CAMERA_QUALITY;
 bool cameraVFlip = false;
 bool cameraHMirror = false;
 int8_t currentFrameSizeIndex = INIT_FRAME_SIZE_INDEX;
 int8_t currentCachePMFrameRateIndex = INIT_FRAME_RATE_INDEX;
 int16_t customCachePHFrameRate = MAX_SLEEP_PH_FRAME_RATE;
 bool enableOffline = false;
+bool autoSave = false;
 
 // helper class to track changes in EEPROM stored settings
-class SettingChangeTracker {
-  public:
-    SettingChangeTracker() {
-      oriCameraBrightness = cameraBrightness;
-      oriCameraVFlip = cameraVFlip;
-      oriCameraHMirror = cameraHMirror;
-      oriCurrentCachePMFrameRateIndex = currentCachePMFrameRateIndex;
-      oriCurrentFrameSizeIndex = currentFrameSizeIndex;
-      oriEnableOffline = enableOffline;
-      oriCustomCachePHFrameRate = customCachePHFrameRate;
-    }
-    bool settingChanged() {
-      return oriCameraBrightness != cameraBrightness ||
-             oriCameraVFlip != cameraVFlip ||
-             oriCameraHMirror != cameraHMirror ||
-             oriCurrentCachePMFrameRateIndex != currentCachePMFrameRateIndex ||
-             oriCurrentFrameSizeIndex != currentFrameSizeIndex ||
-             oriEnableOffline != enableOffline || 
-             oriCustomCachePHFrameRate != customCachePHFrameRate;
-    }
-  private:    
-    int8_t oriCameraBrightness;
-    bool oriCameraVFlip;
-    bool oriCameraHMirror;
-    int8_t oriCurrentCachePMFrameRateIndex;
-    int8_t oriCurrentFrameSizeIndex;
-    bool oriEnableOffline;
-    int16_t oriCustomCachePHFrameRate;
-};
+// class SettingChangeTracker {
+//   public:
+//     SettingChangeTracker() {
+//       oriCameraBrightness = cameraBrightness;
+//       oriCameraVFlip = cameraVFlip;
+//       oriCameraHMirror = cameraHMirror;
+//       oriCurrentCachePMFrameRateIndex = currentCachePMFrameRateIndex;
+//       oriCurrentFrameSizeIndex = currentFrameSizeIndex;
+//       oriEnableOffline = enableOffline;
+//       oriCustomCachePHFrameRate = customCachePHFrameRate;
+//     }
+//     bool settingChanged() {
+//       return oriCameraBrightness != cameraBrightness ||
+//              oriCameraVFlip != cameraVFlip ||
+//              oriCameraHMirror != cameraHMirror ||
+//              oriCurrentCachePMFrameRateIndex != currentCachePMFrameRateIndex ||
+//              oriCurrentFrameSizeIndex != currentFrameSizeIndex ||
+//              oriEnableOffline != enableOffline || 
+//              oriCustomCachePHFrameRate != customCachePHFrameRate;
+//     }
+//   private:    
+//     int8_t oriCameraBrightness;
+//     bool oriCameraVFlip;
+//     bool oriCameraHMirror;
+//     int8_t oriCurrentCachePMFrameRateIndex;
+//     int8_t oriCurrentFrameSizeIndex;
+//     bool oriEnableOffline;
+//     int16_t oriCustomCachePHFrameRate;
+// };
 
 bool offlineStorageInitialized = false;
 int startOfflineSnapIdx = 0;
@@ -219,7 +222,7 @@ void setup() {
   if (wakeupOfflineSnapMillis != -1) {  // wakeupOfflineSnapMillis will be -1 if ESP is reset
     String localTime;
     long now = getTimeNow(&localTime);
-    Serial.println("*** woke up for offline snap ... now=" + localTime + " ***");
+    Serial.println("*** woke up for offline snap ... millis=" + localTime + " ***");
 
   #if defined(SUPPORT_OFFLINE)
     framesize_t frameSize = cameraFrameSizes[currentFrameSizeIndex];
@@ -267,11 +270,13 @@ void loop() {
   pdd.loop([]() {
     initializeDD();
   }, []() {
-    SettingChangeTracker settingChangeTracker;
-    updateDD(!pdd.firstUpdated());
-    if (settingChangeTracker.settingChanged()) {
+    //SettingChangeTracker settingChangeTracker;
+    if (updateDD(!pdd.firstUpdated())) {
        saveSettings();
     }
+    // if (settingChangeTracker.settingChanged()) {
+    //    saveSettings();
+    // }
   }, []() {
     deinitializeDD();
   });
@@ -297,10 +302,12 @@ GraphicalDDLayer* imageLayer;
 JoystickDDLayer* frameSliderLayer;
 SelectionDDLayer* frameSizeSelectionLayer;
 SelectionDDLayer* cameraOptionSelectionLayer;
-LcdDDLayer* brightnessLabelLayer;
-JoystickDDLayer* brightnessSliderLayer;
 LcdDDLayer* qualityLabelLayer;
 JoystickDDLayer* qualitySliderLayer;
+LcdDDLayer* brightnessLabelLayer;
+JoystickDDLayer* brightnessSliderLayer;
+// LcdDDLayer* aeLevelLabelLayer;
+// JoystickDDLayer* aeLevelSliderLayer;
 LcdDDLayer* savedCountLabelLayer;
 SevenSegmentRowDDLayer* savedCountLayer;
 LcdDDLayer* saveButtonLayer;
@@ -329,7 +336,6 @@ String currentStreamImageFileName;
 
 String currentSnapFileName;
 
-bool autoSave = false;
 int savedSnapCount = 0;
 
 enum State {
@@ -478,6 +484,10 @@ void pinLayers(State forState) {
             .addLayer(brightnessLabelLayer)
             .addLayer(brightnessSliderLayer)
           .endGroup()
+          // .beginGroup('H')
+          //   .addLayer(aeLevelLabelLayer)
+          //   .addLayer(aeLevelSliderLayer)
+          // .endGroup()
           .beginGroup('H')
             .addLayer(qualityLabelLayer)
             .addLayer(qualitySliderLayer)
@@ -623,6 +633,19 @@ void initializeDD() {
   brightnessSliderLayer->border(1, DD_COLOR_khaki);
   brightnessSliderLayer->snappy();
   brightnessSliderLayer->showValue(true, "a80%ivory");
+
+  // aeLevelLabelLayer = dumbdisplay.createLcdLayer(2, 1);
+  // aeLevelLabelLayer->backgroundColor(DD_COLOR_azure);
+  // aeLevelLabelLayer->border(1, DD_COLOR_green, "hair");
+  // aeLevelLabelLayer->padding(1);
+  // aeLevelLabelLayer->writeLine("AE");
+
+  // aeLevelSliderLayer = dumbdisplay.createJoystickLayer(1023, "lr", 0.5);
+  // aeLevelSliderLayer->valueRange(-2, 2);
+  // aeLevelSliderLayer->padding(1);
+  // aeLevelSliderLayer->border(1, DD_COLOR_khaki);
+  // aeLevelSliderLayer->snappy();
+  // aeLevelSliderLayer->showValue(true, "a80%ivory");
 
   qualityLabelLayer = dumbdisplay.createLcdLayer(2, 1);
   qualityLabelLayer->backgroundColor(DD_COLOR_azure);
@@ -770,13 +793,16 @@ long getCurrentPHFrameRate() {
     }
 }
 
-void updateDD(bool isFirstUpdate) {
+bool updateDD(bool isFirstUpdate) {
+  bool eepromChanged = false;
+
   if (isFirstUpdate) {
     if (true) {
       String localTime;
       long now = getTimeNow(&localTime);
-      dumbdisplay.logToSerial("*** just connected ... now=" + localTime + " ***");
+      dumbdisplay.logToSerial("*** just connected ... millis=" + localTime + " ***");
     }
+    frameSizeSelectionLayer->select(currentFrameSizeIndex);
     if (currentCachePMFrameRateIndex != -1) {
       frameRateSelectionLayer->select(currentCachePMFrameRateIndex);
     } else {
@@ -817,7 +843,7 @@ void updateDD(bool isFirstUpdate) {
       }
       //generalTunnel = NULL;
     }
-    return;
+    return eepromChanged;
   }
 
   if (!cameraReady) {
@@ -833,6 +859,7 @@ void updateDD(bool isFirstUpdate) {
       updateCameraOptionSelectionLayer();
       brightnessSliderLayer->moveToPos(cameraBrightness, 0);
       updateBrightnessLabel();
+      //aeLevelSliderLayer->moveToPos(cameraAELevel, 0);
       qualitySliderLayer->moveToPos(cameraQuality, 0);
       updateQualityLabel();
       imageLayer->unloadAllImageFiles();
@@ -845,26 +872,23 @@ void updateDD(bool isFirstUpdate) {
       dumbdisplay.logToSerial("... failed to initialize camera!");
     }
     if (cameraReady) {
-      return;
+      return eepromChanged;
     }
     dumbdisplay.writeComment("xxx camera not ready xxx");
     delay(5000);
-    return;
+    return eepromChanged;
   }
 
   if (autoSaveSelectionLayer->getFeedback() != NULL) {
     autoSave = !autoSave;
+    eepromChanged = true;
     updateAutoSaveSelectionLayer();
-    // if (autoSave) {
-    //   autoSaveSelectionLayer->select();
-    // } else {
-    //   autoSaveSelectionLayer->deselect();
-    // }
   }  
 
   #if defined(SUPPORT_OFFLINE)
   if (offlineStorageInitialized && enableOfflineSelectionLayer->getFeedback() != NULL) {
     enableOffline = !enableOffline;
+    eepromChanged = true;
     updateEnableOfflineSelectionLayer();
   }  
   #endif
@@ -879,8 +903,9 @@ void updateDD(bool isFirstUpdate) {
       int newFrameSizeIndex = fb->y;
       if (newFrameSizeIndex != currentFrameSizeIndex) {
         currentFrameSizeIndex = newFrameSizeIndex;
+        eepromChanged = true;
         cameraReady = false;
-        return;
+        return eepromChanged;
       }
     }
     fb = frameRateSelectionLayer->getFeedback();
@@ -890,7 +915,7 @@ void updateDD(bool isFirstUpdate) {
         frameRateSelectionLayer->select(newFrameRateIndex);
         customFrameRateSelectionLayer->deselect();
         currentCachePMFrameRateIndex = newFrameRateIndex;
-        //return;
+        eepromChanged = true;
       }
     }
     fb = customFrameRateSelectionLayer->getFeedback();
@@ -900,6 +925,7 @@ void updateDD(bool isFirstUpdate) {
         if (phFrameRate >= 1 && phFrameRate <= 3600) {
           customCachePHFrameRate = phFrameRate;
           currentCachePMFrameRateIndex = -1;
+          eepromChanged = true;
           frameRateSelectionLayer->deselectAll();
           customFrameRateSelectionLayer->select();
           updateCustomFrameRateSelectionLayer();
@@ -916,8 +942,10 @@ void updateDD(bool isFirstUpdate) {
       int idx = fb->x;
       if (idx == 0) {
         cameraVFlip = !cameraVFlip;
+        eepromChanged = true;
       } else if (idx == 1) {
         cameraHMirror = !cameraHMirror;
+        eepromChanged = true;
       }
       resetCameraImageSettings();
       updateCameraOptionSelectionLayer();
@@ -927,6 +955,7 @@ void updateDD(bool isFirstUpdate) {
       int newBrightness = fb->x;
       if (newBrightness != cameraBrightness) {
         cameraBrightness = newBrightness;
+        eepromChanged = true;
         updateBrightnessLabel();
         resetCameraImageSettings();
       }
@@ -936,6 +965,7 @@ void updateDD(bool isFirstUpdate) {
       int newQuality = fb->x;
       if (newQuality != cameraQuality) {
         cameraQuality = newQuality;
+        eepromChanged = true;
         updateQualityLabel();
         resetCameraImageSettings();
       }
@@ -1028,7 +1058,7 @@ void updateDD(bool isFirstUpdate) {
     if (camera_fb != NULL) {
       esp_camera_fb_return(camera_fb);
     }
-    return;
+    return eepromChanged;
   }
 
   if (state == CONFIRM_SAVE_SNAP) {
@@ -1054,7 +1084,7 @@ void updateDD(bool isFirstUpdate) {
           }
         }
       }
-      return;
+      return eepromChanged;
   }
 
 #if defined(SUPPORT_OFFLINE)
@@ -1074,9 +1104,11 @@ void updateDD(bool isFirstUpdate) {
         setStateToStreaming();
       }
     }
-    return;
+    return eepromChanged;
   }
 #endif
+
+  return eepromChanged;
 }
 
 void deinitializeDD() {
@@ -1095,7 +1127,7 @@ void handleIdle(bool justBecameIdle) {
     if (justBecameIdle) {
       String localTime;
       long now = getTimeNow(&localTime);
-      dumbdisplay.logToSerial("*** just became idle ... now=" + localTime + " ***");
+      dumbdisplay.logToSerial("*** just became idle ... millis=" + localTime + " ***");
       idleStartMillis = now;
     }
 #if defined(SUPPORT_OFFLINE)  
@@ -1149,7 +1181,7 @@ void handleIdle(bool justBecameIdle) {
           }
           String localTime;
           getTimeNow(&localTime);
-          Serial.println("*** going to sleep ... now=" + localTime + " ***");
+          Serial.println("*** going to sleep ... millis=" + localTime + " ***");
           Serial.println("   . sleepTimeoutMillis=" + sleepTimeoutMillis);
           Serial.println("   . wakeupOfflineSnapMillis=" + wakeupOfflineSnapMillis);
           Serial.flush();
@@ -1270,6 +1302,9 @@ bool resetCameraImageSettings() {
   s->set_exposure_ctrl(s, 1);              // auto exposure on
   s->set_awb_gain(s, 1);                   // Auto White Balance enable (0 or 1)
   s->set_brightness(s, cameraBrightness);  // (-2 to 2) - set brightness
+  //s->set_saturation(s, cameraAELevel);       // -2 to 2
+
+  //dumbdisplay.log("brightness:" + String(cameraBrightness) + " / aeLevel:" + String(cameraAELevel));
 
   s->set_quality(s, cameraQuality);        // set JPEG quality (0 to 63)
 
@@ -1377,8 +1412,13 @@ void initRestoreSettings() {
   currentFrameSizeIndex = EEPROM.readChar(8);
   enableOffline = EEPROM.readBool(9);
   customCachePHFrameRate = EEPROM.readShort(10);
+  autoSave = EEPROM.readBool(12);
+  cameraQuality = EEPROM.readChar(13);
   if (cameraBrightness < -2 || cameraBrightness > 2) {
     cameraBrightness = 0;
+  }
+  if (cameraQuality < 5 || cameraQuality > 60) {
+    cameraQuality = INIT_CAMERA_QUALITY;
   }
   if (currentCachePMFrameRateIndex != -1 && (currentCachePMFrameRateIndex < 0 || currentCachePMFrameRateIndex > cachePMFrameRateCount)) {
     currentCachePMFrameRateIndex = INIT_FRAME_RATE_INDEX;
@@ -1387,12 +1427,13 @@ void initRestoreSettings() {
     currentFrameSizeIndex = INIT_FRAME_SIZE_INDEX;
   }
   if (customCachePHFrameRate < 0 || customCachePHFrameRate > 3600) {
-    customCachePHFrameRate = 900;
+    customCachePHFrameRate = MAX_SLEEP_PH_FRAME_RATE;
   }
-  dumbdisplay.logToSerial("EEPROM: init restored settings from EEPROM");
+  //dumbdisplay.logToSerial("EEPROM: init restored settings from EEPROM");
 #if defined(SUPPORT_OFFLINE)
   readOfflineSnapPosition();
 #endif
+  //dumbdisplay.logToSerial("*** READ ... currentFrameSizeIndex=" + String(currentFrameSizeIndex));
 }
 
 void saveSettings() {
@@ -1404,10 +1445,11 @@ void saveSettings() {
   EEPROM.writeChar(8, currentFrameSizeIndex);
   EEPROM.writeBool(9, enableOffline);
   EEPROM.writeShort(10, customCachePHFrameRate);
+  EEPROM.writeBool(12, autoSave);
+  EEPROM.writeChar(13, cameraQuality);
   EEPROM.commit();
-#if defined(MORE_LOGGING)  
-  dumbdisplay.logToSerial("EEPROM: saved settings to EEPROM");
-#endif
+  //dumbdisplay.logToSerial("EEPROM: saved settings to EEPROM");
+  //dumbdisplay.logToSerial("*** WRITE ... currentFrameSizeIndex=" + String(currentFrameSizeIndex));
 }
 
 
