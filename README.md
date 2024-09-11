@@ -1,9 +1,8 @@
-========== WORK IN PROGRESS ==========
 ---
 title: Turn ESP32-CAM into a Snapshot Taker, for Selfies and Time-Lapse Pictures
 description: Turn ESP32-CAM (or equivalent) into an Android phone-managed snapshot taker, for snapshots like selfies and time-lapse pictures
 tags: 'esp32cam, snapshots'
-cover_image: ./imgs/MAIN.jpg
+cover_image: /imgs/snapper-main.png
 ---
 
 
@@ -29,16 +28,16 @@ Please note that the UI is driven by the sketch; i.e., the flow of the UI is pro
 
 There are 3 ways snapshots can be captured and saved to your phone
 
-|1)|  |
-|:--|--|
+|  |  |
+|--|--|
 |With your phone connected to the ESP32-CAM -- certainly through the DumbDisplay Android app with Bluetooth or WiFi -- you click the ***💾Save*** button of the UI to save the image being shown. You can turn on / off the auto-save feature by clicking ***Auto❎*** / ***Auto☑️***. With auto-save enabled, whenever a snapshot is captured from the ESP32-CAM, it will be saved to your phone automatically.|![](/imgs/snapper-ss-00.jpg)|
 
-|2)|  |
-|:--|--|
+|  |  |
+|--|--|
 |Assuming you have connected your phone with the ESP32-CAM, clicking on the image canvas will pause showing snapshots, and you will be provided with a slider to slide back in time to select the previously captured snapshots to save to your phone. You will have 20 such snapshots that you can slide back in time to. Once you see the snapshots you like, click ***💾Save*** to save it. When you are done, you can go back by clicking ***❌Cancel*** (or double click on the image canvas).|![](/imgs/snapper-ss-01.jpg)|
 
-|3)|  |
-|:--|--|
+|  |  |
+|--|--|
 |Select ***Offline📴*** to enable "offline" capturing and saving of snapshots to the ESP32-CAM. With "offline" enabled, when you disconnect (i.e. offline), the ESP32-CAM will start capturing "offline" snapshots saving them to its flash memory (or SD card). Whenever you reconnect, you will be asked if you want to transfer the saved "offline" snapshots to your phone. Better yet, in SD card case, you can physically transfer the "offline" snapshot ***JPEG*** files saved the usual way -- insert the SD card to your computer, copy and delete the ***JPEG*** files on your SD card. *One point about using the SD card slot of ESP32-CAM -- since the SD card module of ESP32-CAM shares the same pin 4 used by the flashlight, whenever the SD card is accessed, the flashlight will light up bright (hence it is not a feature, but it is how it is)*|![](/imgs/snapper-ss-02.jpg)![](/imgs/snapper-ss-03.jpg)|
 
 The snapshots will be saved in ***JPEG*** format:
