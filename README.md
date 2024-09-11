@@ -47,7 +47,7 @@ The snapshots will be saved in ***JPEG*** format:
 * Offline snapshots transferred to your phone will be saved to a subfolder of the above-mentioned private folder of DumbDisplay app. The name of the subfolder depends on the time you do the snapshots transfer, and is like `20240904_231329_OFF`.
 * Offline snapshots are saved to your ESP32-CAM's flash memory / SD card with name like `off_001.jpg`. Note that the "offline" ***JPEG*** files will only be properly time-stamped if there was no reset / reboot of ESP32-CAM after connecting to your phone.
 
-|  |  |
+|  |  |  |
 |--|--|--|
 |By default, the storage for DumbDisplay app is a private folder, which DumbDisplay app needs to initialize. You can do this By selecting the ***Settings*** menu item of DumbDisplay app, and clicking on the ***Media Storage*** button|![](/imgs/dd-settings-menu.jpg)|![](/imgs/dd-prepare-store.jpg)|
 
