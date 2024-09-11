@@ -53,7 +53,7 @@ The snapshots will be saved in ***JPEG*** format:
 
 |  |  |
 |--|--|
-|And you can use a folder manager app, like [***Files*** by ***Marc apps***](https://play.google.com/store/apps/details?id=com.marc.files&hl=en) to browse to that folder.|![](/imgs/snapper-folder.gif)|
+|And you can use a folder manager app, like [***Files*** by ***Marc apps & software***](https://play.google.com/store/apps/details?id=com.marc.files&hl=en) to browse to that folder.|![](/imgs/snapper-folder.gif)|
 
 # The UI -- Frequency of Capturing Snapshots
 
