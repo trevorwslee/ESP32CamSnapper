@@ -1,7 +1,7 @@
 ========== WORK IN PROGRESS ==========
 ---
-title: Turn ESP32-CAM into a Snapshot Taker, for Selfies and Time Lapse Pictures
-description: Turn ESP32-CAM (or equivalent) into an Android phone managed snapshot taker, for snapshots like selfies and time-lapse pictures
+title: Turn ESP32-CAM into a Snapshot Taker, for Selfies and Time-Lapse Pictures
+description: Turn ESP32-CAM (or equivalent) into an Android phone-managed snapshot taker, for snapshots like selfies and time-lapse pictures
 tags: 'esp32cam, snapshots'
 cover_image: ./imgs/MAIN.jpg
 ---
@@ -10,13 +10,13 @@ cover_image: ./imgs/MAIN.jpg
 # Turn ESP32-CAM into a Snapshot Taker, for Selfies and Time Lapse Pictures
 
 
-This project is an attempt to turn ESP32-CAM (or similar ones like LILYGO T-Camera / T-Camera Plus) microcontroller board into an Android phone managed snapshot taker, for snapshots like selfies and time-lapse pictures ... maybe ... just for fun!
+This project is an attempt to turn ESP32-CAM (or similar ones like LILYGO T-Camera / T-Camera Plus) microcontroller board into an Android phone-managed snapshot taker, for snapshots like selfies and time-lapse pictures ... maybe ... just for fun!
 
 > With your Android phone, connect to the ESP32-CAM, make your post and smile.
 >  Then go back to your phone to select the pictures you like best and save to your phone directly.
 
 > With your Android phone, connect to the ESP32-CAM, set how frequently a snapshot is to be taken.
->  Then disconnect from the ESP32-CAM and let it does its job of taking time-lapse pictures.
+>  Then disconnect from the ESP32-CAM and let it do its job of taking time-lapse pictures.
 >  Then reconnect to the ESP32-CAM to transfer the taken pictures to your phone.
 
 The microcontroller program (sketch) is developed with Arduino framework using VS Code and PlatformIO, in the similar fashion as described by the post -- [A Way to Run Arduino Sketch With VSCode PlatformIO Directly](https://www.instructables.com/A-Way-to-Run-Arduino-Sketch-With-VSCode-PlatformIO/)
@@ -29,22 +29,22 @@ Please note that the UI is driven by the sketch; i.e., the flow of the UI is pro
 
 There are 3 ways snapshots can be captured and saved to your phone
 
-|  |  |
+|1)|  |
 |--|--|
 |With your phone connected to the ESP32-CAM -- certainly through the DumbDisplay Android app with Bluetooth or WiFi -- you click the ***💾Save*** button of the UI to save the image being shown. You can turn on / off the auto-save feature by clicking ***Auto❎*** / ***Auto☑️***. With auto-save enabled, whenever a snapshot is captured from the ESP32-CAM, it will be saved to your phone automatically.|![](/imgs/snapper-ss-00.jpg)|
 
-|  |  |
+|2)|  |
 |--|--|
 |Assuming you have connected your phone with the ESP32-CAM, clicking on the image canvas will pause showing snapshots, and you will be provided with a slider to slide back in time to select the previously captured snapshots to save to your phone. You will have 20 such snapshots that you can slide back in time to. Once you see the snapshots you like, click ***💾Save*** to save it. When you are done, you can go back by clicking ***❌Cancel*** (or double click on the image canvas).|![](/imgs/snapper-ss-01.jpg)|
 
-|  |  |
+|3)|  |
 |--|--|
-|Select ***Offline📴*** to enable "offline" capturing and saving of snapshot to the ESP32-CAM. With "offline" enabled, when you disconnect (i.e. offline), the ESP32-CAM will start capturing "offline" snapshots saving them to its flash memory (or SD card). Whenever you reconnect, you will be asked if you want to transfer the saved "offline" snapshots to your phone. Better yet, in SD card case, you can physically transfer the "offline" snapshot ***JPEG*** files saved the usual way -- insert the SD card to your computer, copy and delete the ***JPEG*** files on your SD card. *One point about using the SD card slot of ESP32-CAM -- since the SD card module of ESP32-CAM shares the same pin 4 used by the flash light, whenever the SD card is accessed, the flash light will light up bright (hence it is not a feature, but it is how it is)*|![](/imgs/snapper-ss-02.jpg)![](/imgs/snapper-ss-03.jpg)|
+|Select ***Offline📴*** to enable "offline" capturing and saving of snapshots to the ESP32-CAM. With "offline" enabled, when you disconnect (i.e. offline), the ESP32-CAM will start capturing "offline" snapshots saving them to its flash memory (or SD card). Whenever you reconnect, you will be asked if you want to transfer the saved "offline" snapshots to your phone. Better yet, in SD card case, you can physically transfer the "offline" snapshot ***JPEG*** files saved the usual way -- insert the SD card to your computer, copy and delete the ***JPEG*** files on your SD card. *One point about using the SD card slot of ESP32-CAM -- since the SD card module of ESP32-CAM shares the same pin 4 used by the flashlight, whenever the SD card is accessed, the flashlight will light up bright (hence it is not a feature, but it is how it is)*|![](/imgs/snapper-ss-02.jpg)![](/imgs/snapper-ss-03.jpg)|
 
 The snapshots will be saved in ***JPEG*** format:
 
 * Snapshots saved to your phone will be saved to the private folder of DumbDisplay app - `/<main-storage>/Android/data/nobody.trevorlee.dumbdisplay/files/Pictures/DumbDisplay/snaps/` -- with file name like `20240904_223249_001.jpg` (`YYYYMMDD-hhmmss_seq.jpg`)
-* Offline snapshots transferred to your phone will be save to a subfolder of the above mentioned private folder of DumbDisplay app. The name of the subfolder depends on the time you do the snapshots transfer, and is like `20240904_231329_OFF`.
+* Offline snapshots transferred to your phone will be saved to a subfolder of the above-mentioned private folder of DumbDisplay app. The name of the subfolder depends on the time you do the snapshots transfer, and is like `20240904_231329_OFF`.
 * Offline snapshots are saved to your ESP32-CAM's flash memory / SD card with name like `off_001.jpg`. Note that the "offline" ***JPEG*** files will only be properly time-stamped if there was no reset / reboot of ESP32-CAM after connecting to your phone.
 
 |  |  |  |
@@ -57,11 +57,11 @@ The snapshots will be saved in ***JPEG*** format:
 
 # The UI -- Frequency of Capturing Snapshots
 
-Actually, snapshot capturing is continuous (as fast as possible), but captured snapshot shipments to your phone is not as smooth; in fact there is a setting on how frequent a snapshot is shipped to your phone. Depending on the resolution / quality of the snapshot and the connection method / condition, it can be as frequent as 5 snapshots per second. Treat this frequency control as a feature that allows taking of time-lapse pictures at a desired frequency 😁
+Actually, snapshot capturing is continuous (as fast as possible), but captured snapshot shipments to your phone is not as smooth; in fact there is a setting on how frequently a snapshot is shipped to your phone. Depending on the resolution / quality of the snapshot and the connection method / condition, it can be as frequent as 5 snapshots per second. Treat this frequency control as a feature that allows taking of time-lapse pictures at a desired frequency 😁
 
 There are 4 quick selections of frequency / frame rate -- ***5 PS*** / ***2 PS*** / ***1 PS*** / ***30 PM*** corresponding to *5 frames per second* / *2 frames per second* / *1 frame per second* / *30 frames per minute*
 
-And there is a custom per-hour frame rate you can set and select -- ***720 PH*** (720 is the default). Once you click on the ***720 PH*** selection, your phone's virtual keyword will popup allowing you to enter the value (1 - 3600) you want (an empty value means previously set value). 
+And there is a custom per-hour frame rate you can set and select -- ***720 PH*** (720 is the default). Once you click on the ***720 PH*** selection, your phone's virtual keyword will pop up allowing you to enter the value (1 - 3600) you want (an empty value means previously set value). 
 
 
 # The UI -- Snapshots Quality Adjustments
@@ -78,7 +78,7 @@ There are several camera adjustments that will affect the quality of the capture
 * ***JPEG*** compression quality slider 🖼️ -- from 5 (high quality) to 60 (low quality)
 * Brightness slider ☀️ -- from -2 (dim) to 2 (bright)
 
-Note that the higher the snapshots quality / resolution, the more data need be shipped from the ESP32-CAM to your phone, making the UI less responsive, especially when WiFi (not Bluetooth) since WiFi is not full-duplex.
+Note that the higher the snapshots quality / resolution, the more data needs be shipped from the ESP32-CAM to your phone, making the UI less responsive, especially when WiFi (not Bluetooth) since WiFi is not full-duplex.
 
 # The UI -- ESP32 Idle Sleep
 
@@ -92,7 +92,7 @@ In any case, ***if you want to connect to the ESP32-CAM when it is in sleep mode
 As mentioned previously, the sketch will be developed using VS Code and PlatformIO.
 Please clone the PlatformIO project [ESP32CamSnapper](https://github.com/trevorwslee/ESP32CamSnapper) GitHub repository.
 
-The configurations for developing and building of the sketch in basically written down in the `platformio.ini` file
+The configurations for developing and building of the sketch are basically written down in the `platformio.ini` file
 ```
 [env]
 monitor_speed = 115200
@@ -265,7 +265,7 @@ When it wakes up, the sketch / program will be just like freshly started, except
 RTC_DATA_ATTR int32_t tzMins = 0;
 RTC_DATA_ATTR int64_t wakeupOfflineSnapMillis = -1;
 ```
-Note that variable prefixed with `RTC_DATA_ATTR` will keep its value from sleep to wake up.
+Note that the variable prefixed with `RTC_DATA_ATTR` will keep its value through sleep.
 
 
 # Sketch Highlight -- Camera
@@ -293,7 +293,7 @@ bool initializeCamera(framesize_t frameSize, int jpegQuality) {
 }
 > It is important that `pixel_format` be set to `PIXFORMAT_JPEG`. 
 ```
-Notice that at the end of `initializeCamera`, `resetCameraImageSettings` is called to set the various settings of the Camera, which is also called when you changed camera settings with the UI
+Notice that at the end of `initializeCamera`, `resetCameraImageSettings` is called to set the various settings of the Camera, which is also called when you change camera settings with the UI
 ```
 bool resetCameraImageSettings() {
   sensor_t *s = esp_camera_sensor_get();
@@ -309,7 +309,7 @@ bool resetCameraImageSettings() {
 }
 ```
 
-Concerning capturing snapshots, here is how "offline" a snapshot is taken when ESP32-CAM wakes up from sleep
+Concerning capturing snapshots, here is how an "offline" snapshot is taken when ESP32-CAM wakes up from sleep
 ```
 void setup() {
   Serial.begin(115200);
@@ -371,7 +371,7 @@ Like all other use cases of using DumbDisplay, you first declare a global `DumbD
   DumbDisplay dumbdisplay(new DDInputOutput());
 #endif
 ```
-> In WiFi case, normally, you will use the defaults for `sendBufferSize` (2nd parameters) and `idleTimeout` (3rd parameters). However for this program, since large amount of data might be shipped to DumbDisplay app, the `idleTimeout` better be longer than the default. 
+> In WiFi case, normally, you will use the defaults for `sendBufferSize` (2nd parameter) and `idleTimeout` (3rd parameter). However for this program, since a large amount of data might be shipped to DumbDisplay app, the `idleTimeout` better be longer than the default. 
 
 Then, several global helper objects / pointers are declared
 ```
@@ -465,9 +465,9 @@ void pinLayers(State forState) {
   }
 }
 ```
-> The last parameter of `configAutoPin` is `autoShowHideLayers`.  Which in `true` case, auto-pinning will automatically hide all other not involved layers. This relieves the need to explicitly hide all layers not involved in different scenes of the UI.
+> The last parameter of `configAutoPin` is `autoShowHideLayers`.  Which if `true`, auto-pinning will automatically hide all other not-involved layers. This relieves the need to explicitly hide all layers not involved in different scenes of the UI.
 
-Selection and prompting for custom frame rate might worth highlighting here. It is accomplished with the `customFrameRateSelectionLayer` layer
+Selection and prompting for custom frame rate might be worth highlighting here. It is accomplished with the `customFrameRateSelectionLayer` layer
 ```
     fb = customFrameRateSelectionLayer->getFeedback();
     if (fb != NULL) {
@@ -521,7 +521,7 @@ bool updateDD(bool isFirstUpdate) {
 * Right after gotten the "sync time" from DumbDisplay app, and when need to prompt for "yes/no" confirmation for transferring "offline" snaps, `generalTunnel->reconnectTo` is called to handle the "confirm" request.
 * The "Yes" or "No" response will come back through `generalTunnel` again (the same way as `DD_CONNECT_FOR_GET_DATE_TIME`)
 
-After the "offline" transfer, an "alert" is popped up indiction the transfer is done. This is done by calling `dumbdispaly.alert`
+After the "offline" transfer, an "alert" is popped up indicating the transfer is done. This is done by calling `dumbdispaly.alert`
 ```
 bool updateDD(bool isFirstUpdate) {
   ...
@@ -540,7 +540,7 @@ bool updateDD(bool isFirstUpdate) {
 
 Build, upload the sketch and try it out! 
 
-If of interested to you, use a Serial monitor (set baud-rate to 115200) to observe when things are happening
+If it interests you, you may use a Serial monitor (set to baud-rate 115200) to observe when things are happening
 
 ```
 Initialize offline snap storage ...
