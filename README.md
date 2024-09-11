@@ -3,6 +3,7 @@ title: 'Turn ESP32-CAM into a Snapshot Taker, for Selfies and Time-Lapse Picture
 description: 'Turn ESP32-CAM (or equivalent) into an Android phone-managed snapshot taker, for snapshots like selfies and time-lapse pictures'
 tags: 'esp32cam, snapshots'
 cover_image: /imgs/snapper-main.png
+published: true
 id: 1996805
 ---
 
