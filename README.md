@@ -11,6 +11,7 @@ id: 1996805
 # Turn ESP32-CAM into a Snapshot Taker, for Selfies and Time Lapse Pictures
 
 
+
 This project is an attempt to turn ESP32-CAM (or similar ones like LILYGO T-Camera / T-Camera Plus) microcontroller board into an Android phone-managed snapshot taker, for snapshots like selfies and time-lapse pictures ... maybe ... just for fun!
 
 > With your Android phone, connect to the ESP32-CAM, make your post and smile.
@@ -19,6 +20,9 @@ This project is an attempt to turn ESP32-CAM (or similar ones like LILYGO T-Came
 > With your Android phone, connect to the ESP32-CAM, set how frequently a snapshot is to be taken.
 >  Then disconnect from the ESP32-CAM and let it do its job of taking time-lapse pictures.
 >  Then reconnect to the ESP32-CAM to transfer the taken pictures to your phone.
+
+![](/imgs/snapper-main.png)
+
 
 The microcontroller program (sketch) is developed with Arduino framework using VS Code and PlatformIO, in the similar fashion as described by the post -- [A Way to Run Arduino Sketch With VSCode PlatformIO Directly](https://www.instructables.com/A-Way-to-Run-Arduino-Sketch-With-VSCode-PlatformIO/)
 
