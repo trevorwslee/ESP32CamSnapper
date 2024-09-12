@@ -5,6 +5,7 @@ tags: 'esp32cam, snapshots'
 cover_image: /imgs/snapper-main.png
 published: true
 id: 1996805
+date: '2024-09-11T13:42:03Z'
 ---
 
 
