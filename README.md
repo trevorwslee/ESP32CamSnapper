@@ -63,7 +63,7 @@ The snapshots will be saved in ***JPEG*** format:
 
 # The UI -- Frequency of Capturing Snapshots
 
-Actually, snapshot capturing is continuous (as fast as possible), but captured snapshot shipments to your phone is not as smooth; in fact there is a setting on how frequently a snapshot is shipped to your phone. Depending on the resolution / quality of the snapshot and the connection method / condition, it can be as frequent as 5 snapshots per second. Treat this frequency control as a feature that allows taking of time-lapse pictures at a desired frequency 😁
+Actually, snapshot capturing is continuous (as fast as possible), but captured snapshot shipment to your phone is not as smooth; in fact there is a setting on how frequently a snapshot is shipped to your phone. Depending on the resolution / quality of the snapshot and the connection method / condition, it can be as frequent as 5 snapshots per second. Treat this frequency control as a feature that allows taking of time-lapse pictures at a desired frequency 😁
 
 There are 4 quick selections of frequency / frame rate -- ***5 PS*** / ***2 PS*** / ***1 PS*** / ***30 PM*** corresponding to *5 frames per second* / *2 frames per second* / *1 frame per second* / *30 frames per minute*
 

@@ -77,6 +77,10 @@ void saveSettings();
       #define STORAGE SD
       #include "SD.h"
       SPIClass spi = SPIClass();
+    #elif defined(FOR_S3SENSE)
+      #define STORAGE SD
+      #include "SD.h"
+      SPIClass spi = SPIClass();
     #else
       #define STORAGE SD_MMC
       #include "SD_MMC.h"
@@ -164,6 +168,7 @@ long idleStartMillis = 0;
 
 
 void setup() {
+  delay(10000);
   Serial.begin(115200);
   EEPROM.begin(32);
   initRestoreSettings();
@@ -1135,7 +1140,7 @@ void handleIdle(bool justBecameIdle) {
   #define VSYNC_GPIO_NUM    5       // vsync_pin
   #define HREF_GPIO_NUM     27      // href_pin
   #define PCLK_GPIO_NUM     25      // pixel_clock_pin
-#elif defined(FOR_ESP32S3EYE)
+#elif defined(FOR_32S3EYE)
   #define PWDN_GPIO_NUM     -1
   #define RESET_GPIO_NUM    -1      // -1 = not used
   #define XCLK_GPIO_NUM     15
@@ -1151,6 +1156,23 @@ void handleIdle(bool justBecameIdle) {
   #define Y2_GPIO_NUM       11
   #define VSYNC_GPIO_NUM     6      // vsync_pin
   #define HREF_GPIO_NUM      7      // href_pin
+  #define PCLK_GPIO_NUM     13      // pixel_clock_pin
+#elif defined(FOR_S3SENSE)
+  #define PWDN_GPIO_NUM     -1
+  #define RESET_GPIO_NUM    -1      // -1 = not used
+  #define XCLK_GPIO_NUM     10
+  #define SIOD_GPIO_NUM     40      // i2c sda
+  #define SIOC_GPIO_NUM     39      // i2c scl
+  #define Y9_GPIO_NUM       48
+  #define Y8_GPIO_NUM       11
+  #define Y7_GPIO_NUM       12
+  #define Y6_GPIO_NUM       14
+  #define Y5_GPIO_NUM       16
+  #define Y4_GPIO_NUM       18
+  #define Y3_GPIO_NUM       17
+  #define Y2_GPIO_NUM       15
+  #define VSYNC_GPIO_NUM    38      // vsync_pin
+  #define HREF_GPIO_NUM     47      // href_pin
   #define PCLK_GPIO_NUM     13      // pixel_clock_pin
 #else
   #error board not supported  
@@ -1328,6 +1350,10 @@ bool initializeStorage() {
   #if defined(FOR_TCAMERAPLUS)
     spi.begin(21, 22, 19);
     bool successful = SD.begin(0, spi);
+  #elif defined(FOR_S3SENSE)
+    spi.begin(7, 8, 9);
+    bool successful = SD.begin(21, spi);
+    //bool successful = SD.begin(21);
   #else
     bool successful = SD_MMC.begin();
   #endif    
