@@ -77,7 +77,7 @@ void saveSettings();
       #define STORAGE SD
       #include "SD.h"
       SPIClass spi = SPIClass();
-    #elif defined(FOR_S3SENSE)
+    #elif defined(FOR_XIAO_S3SENSE)
       #define STORAGE SD
       #include "SD.h"
       SPIClass spi = SPIClass();
@@ -1157,7 +1157,7 @@ void handleIdle(bool justBecameIdle) {
   #define VSYNC_GPIO_NUM     6      // vsync_pin
   #define HREF_GPIO_NUM      7      // href_pin
   #define PCLK_GPIO_NUM     13      // pixel_clock_pin
-#elif defined(FOR_S3SENSE)
+#elif defined(FOR_XIAO_S3SENSE)
   #define PWDN_GPIO_NUM     -1
   #define RESET_GPIO_NUM    -1      // -1 = not used
   #define XCLK_GPIO_NUM     10
@@ -1350,7 +1350,7 @@ bool initializeStorage() {
   #if defined(FOR_TCAMERAPLUS)
     spi.begin(21, 22, 19);
     bool successful = SD.begin(0, spi);
-  #elif defined(FOR_S3SENSE)
+  #elif defined(FOR_XIAO_S3SENSE)
     spi.begin(7, 8, 9);
     bool successful = SD.begin(21, spi);
     //bool successful = SD.begin(21);

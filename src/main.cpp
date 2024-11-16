@@ -5,7 +5,7 @@
 // ***
 #include "_secret.h"
 
-#if !defined(FOR_S3EYE) && !defined(FOR_S3SENSE)
+#if !defined(FOR_S3EYE) && !defined(FOR_XIAO_S3SENSE)
   // *** use Bluetooth with the following device name
   #define BLUETOOTH "ESP32CamSnapper"
 #endif
@@ -16,7 +16,7 @@
 #elif defined(FOR_TCAMERAPLUS)
   // *** LILYGO TCameraPlus has SD
   //#define OFFLINE_USE_SD
-#elif defined(FOR_S3SENSE)
+#elif defined(FOR_XIAO_S3SENSE)
   // *** Xiao S3Sense has SD
   //#define OFFLINE_USE_SD
 #endif
