@@ -598,7 +598,6 @@ Initialize offline snap storage ...
 ...
 ```
 
-
 # Enjoy!
 
 Hope that you will have fun with it! Enjoy!
@@ -609,12 +608,7 @@ Hope that you will have fun with it! Enjoy!
 > Amazing Grace!
 
 
-<hr>
+[![](https://img.youtube.com/vi/pHbXvHb8zV0/0.jpg)](https://www.youtube.com/watch?v=pHbXvHb8zV0)
 
-<div>
-      <a href="https://www.youtube.com/watch?v=pHbXvHb8zV0">
-         <img src="https://img.youtube.com/vi/pHbXvHb8zV0/0.jpg" style="width:50%;">
-      </a>
-</div>
 
 
