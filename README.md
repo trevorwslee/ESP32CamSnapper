@@ -289,7 +289,7 @@ bool initializeCamera(framesize_t frameSize, int jpegQuality) {
   config.frame_size = frameSize;                
   config.jpeg_quality = jpegQuality;
   config.fb_count = 1;
-  ..
+  ...
   esp_err_t camerr = esp_camera_init(&config);  // initialize the camera
   if (camerr != ESP_OK) {
     dumbdisplay.logToSerial("ERROR: Camera init failed with error -- " + String(camerr));
@@ -297,9 +297,9 @@ bool initializeCamera(framesize_t frameSize, int jpegQuality) {
   resetCameraImageSettings();
   return (camerr == ESP_OK);
 }
-> It is important that `pixel_format` be set to `PIXFORMAT_JPEG`. 
 ```
-Notice that at the end of `initializeCamera`, `resetCameraImageSettings` is called to set the various settings of the Camera, which is also called when you change camera settings with the UI
+***It is important that `pixel_format` be set to `PIXFORMAT_JPEG`.***
+Also notice that at the end of `initializeCamera`, `resetCameraImageSettings` is called to set the various settings of the Camera, which is also called when you change camera settings with the UI
 ```
 bool resetCameraImageSettings() {
   sensor_t *s = esp_camera_sensor_get();
@@ -458,8 +458,9 @@ void pinLayers(State forState) {
       .build(), true);
   } else if (forState == CONFIRM_SAVE_SNAP) {
     dumbdisplay.configAutoPin(DDAutoPinConfig('V')
-      .addLayer(imageLayer)
-      ...
+      .beginGroup('H')
+        .addLayer(imageLayer)
+        ...
       .endGroup()
       .build(), true);
   } else if (forState == TRANSFER_OFFLINE_SNAPS) {
